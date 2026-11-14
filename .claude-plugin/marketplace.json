@@ -9,7 +9,7 @@
       "name": "secops-review-kit",
       "displayName": "SecOps PR & Security Auditor Kit",
       "source": "./",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "Bộ công cụ rà soát bảo mật PR, Subagent kiểm toán độc lập và Hooks kiểm tra trước khi push.",
       "author": {
         "name": "SecOps Engineering Team",
