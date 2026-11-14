@@ -20,11 +20,11 @@ jq -n --arg path "$TMP/project dir/file with spaces.js" '{tool_input:{file_path:
   PATH="$TMP/bin:$PATH" FORMAT_LOG="$TMP/format.log" bash "$HOOK"
 
 mapfile -t args < "$TMP/format.log"
-[[ "${#args[@]}" -eq 4 ]]
+[[ "${#args[@]}" -eq 5 ]]
 [[ "${args[0]}" == "--no-install" ]]
 [[ "${args[1]}" == "prettier" ]]
 [[ "${args[2]}" == "--write" ]]
-[[ "${args[3]}" == "--" ]] && { echo "Unexpected argument order"; exit 1; }
+[[ "${args[3]}" == "--" ]]
 
 # Ensure a path with spaces remains a single argument after the option separator.
 [[ "${args[4]-}" == "$TMP/project dir/file with spaces.js" ]]
