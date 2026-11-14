@@ -1,22 +1,38 @@
-import { expect, test } from 'claude-code/testing';
+import { describe, expect, mock, test, tier } from 'claude-code/testing';
 
-test('/secops-pane mở bảng trạng thái và cập nhật bộ đếm công cụ', async ($, on) => {
-  // Đăng ký các stub trả lời thay cho Claude Code trong môi trường kiểm thử
-  on('store.get', () => 0);
-  on('store.set', () => ({}));
-  on('command.register', () => ({}));
-  on('ui.open', () => ({ isOpened: true }));
-  on('ui.invalidate', () => ({}));
-  on('tool.call', () => ({ result: 'ok' }));
+tier('user');
 
-  // Khởi chạy sự kiện bắt đầu phiên
-  await $.session.start({});
+describe('register', () => {
+  test('registers /secops-pane and opens its dashboard', async ($, on) => {
+    const registeredCommands: string[] = [];
+    const openedPanes: string[] = [];
 
-  // Giả lập 2 lần gọi công cụ (1 lệnh Bash và 1 lần sửa tệp Edit)
-  await $.tool.call({ tool: 'Bash', command: 'git status' });
-  await $.tool.call({ tool: 'Edit', file_path: 'src/index.ts' });
+    mock.store(on, {});
+    on('session.start', ($, e) => ({ cwd: e.cwd }));
+    on('command.register', ($, e) => {
+      registeredCommands.push(e.name);
+      return { value: { command: e.name } };
+    });
+    on('ui.open', ($, e, next) => {
+      openedPanes.push(e.id);
+      return next(e);
+    });
 
-  // Chạy lệnh /secops-pane để mở bảng trạng thái
-  const cmdResult = await $.command.run({ command: 'secops-pane', args: '' });
-  expect(cmdResult).toEqual({});
+    await $.session.start({
+      surface: 'terminal',
+      isInteractive: true,
+      cwd: '/work',
+    });
+
+    const result = await $.command.run({
+      command: 'secops-pane',
+      args: '',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: true, columns: 120 },
+    });
+
+    expect(registeredCommands).toContain('secops-pane');
+    expect(openedPanes).toContain('secops-dashboard');
+    expect(result).toEqual({});
+  });
 });
