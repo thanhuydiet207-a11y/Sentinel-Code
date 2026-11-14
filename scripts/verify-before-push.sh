@@ -216,10 +216,17 @@ patterns = [
     re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{10,}\b"),
     re.compile(r"(?i)\bAccountKey=[A-Za-z0-9+/]{20,}={0,2}"),
+    re.compile(r"\\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\\b"),
+    re.compile(r"\\bAIza[0-9A-Za-z_-]{30,}\\b"),
+    re.compile(r"\\bnpm_[A-Za-z0-9]{30,}\\b"),
+    re.compile(r"\\bpypi-[A-Za-z0-9_-]{50,}\\b"),
+    re.compile(r"\\bSG\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}\\b"),
+    re.compile(r"\\bSK[0-9a-fA-F]{32}\\b"),
     re.compile(r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s/:@]+:[^\s@]+@"),
     re.compile(r"(?i)\b(?:api[_-]?key|secret[_-]?key|client[_-]?secret|access[_-]?token)\s*[:=]\s*[\"\x27]?([A-Za-z0-9_./+=-]{24,})"),
 ]
-placeholders = ("example", "changeme", "your_", "dummy", "test_", "redacted", "placeholder", "xxxx")
+placeholder_prefix = re.compile(r"(?i)^(?:your_|dummy_|redacted_|placeholder_|changeme_|xxxx)")
+known_test_values = {"AKIAIOSFODNN7EXAMPLE"}
 for line in sys.stdin:
     if line.startswith(("--- ", "+++ ")):
         continue
@@ -227,7 +234,7 @@ for line in sys.stdin:
         match = pattern.search(line)
         if match:
             value = match.group(1) if match.lastindex else match.group(0)
-            if any(word in value.lower() for word in placeholders):
+            if value in known_test_values or placeholder_prefix.search(value):
                 continue
             print("SECRET_FOUND")
             sys.exit(0)
