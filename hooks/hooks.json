@@ -1,5 +1,7 @@
 {
-  "modules": ["./register.js"],
+  "modules": [
+    "./register.js"
+  ],
   "hooks": {
     "PreToolUse": [
       {
@@ -7,8 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git push *)",
-            "command": "\"\u0024{CLAUDE_PLUGIN_ROOT}/scripts/verify-before-push.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/verify-before-push.sh\""
           }
         ]
       }
