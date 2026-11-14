@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="$ROOT/scripts/verify-before-push.sh"
 command -v git >/dev/null
 command -v jq >/dev/null
+command -v python3 >/dev/null
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -67,6 +68,24 @@ assert_block "HEAD:refs/heads/main refspec is blocked" "$TMP/refspec" "git push 
 
 new_repo shorthand
 assert_block "HEAD:production shorthand refspec is blocked" "$TMP/shorthand" "git push origin HEAD:production"
+
+new_repo multi_refspec
+assert_block "second protected refspec is blocked" "$TMP/multi_refspec" "git push origin feature:feature main:main"
+
+new_repo push_all
+assert_block "--all push is blocked" "$TMP/push_all" "git push --all origin"
+
+new_repo push_mirror
+assert_block "--mirror push is blocked" "$TMP/push_mirror" "git push --mirror origin"
+
+new_repo git_c
+assert_block "git -C invocation is inspected" "$TMP/git_c" "git -C \"$TMP/git_c\" push origin HEAD:refs/heads/main"
+
+new_repo implicit
+assert_block "implicit destination push is blocked" "$TMP/implicit" "git push"
+
+new_repo quoted
+assert_allow "quoted feature refspec is allowed" "$TMP/quoted" "git push origin 'feature/test:feature/test'"
 
 new_repo first_push_secret
 printf 'AWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF\n' > "$TMP/first_push_secret/leak.txt"
