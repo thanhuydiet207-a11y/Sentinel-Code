@@ -1,0 +1,36 @@
+name: Claude Code SecOps PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  secops-review:
+    name: Run SecOps Review Kit Plugin
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Claude Code with SecOps Plugin
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: "https://github.com/Thanhuydiet207-a11y/Sentinel-Code"
+          plugins: "secops-review-kit@internal-secops-marketplace"
+          prompt: "/secops-review-kit:pr-security-review origin/${{ github.base_ref || 'main' }}"
+          claude_args: "--max-turns 10 --allowedTools Read,Grep,Glob,Agent,Bash(git diff *),Bash(git status *),Bash(git log *)"
