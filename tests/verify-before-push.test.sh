@@ -81,6 +81,21 @@ assert_block "--mirror push is blocked" "$TMP/push_mirror" "git push --mirror or
 new_repo git_c
 assert_block "git -C invocation is inspected" "$TMP/git_c" "git -C \"$TMP/git_c\" push origin HEAD:refs/heads/main"
 
+new_repo sudo_wrapper
+assert_block "sudo-wrapped Git push is inspected" "$TMP/sudo_wrapper" "sudo git push origin HEAD:refs/heads/main"
+
+new_repo env_wrapper
+assert_block "environment-prefixed Git push is inspected" "$TMP/env_wrapper" "env GIT_TRACE=1 git push origin HEAD:refs/heads/main"
+
+new_repo command_wrapper
+assert_block "command-wrapped Git push is inspected" "$TMP/command_wrapper" "command git push origin HEAD:refs/heads/main"
+
+new_repo shell_wrapper
+assert_block "bash -c Git push is inspected" "$TMP/shell_wrapper" "bash -c 'git push origin HEAD:refs/heads/main'"
+
+new_repo nested_wrapper
+assert_block "sudo bash -c Git push is inspected" "$TMP/nested_wrapper" "sudo bash -c 'git push origin HEAD:refs/heads/main'"
+
 new_repo implicit
 assert_block "implicit destination push is blocked" "$TMP/implicit" "git push"
 
