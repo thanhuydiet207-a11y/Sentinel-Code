@@ -1,0 +1,31 @@
+name: Plugin validation
+
+on:
+  push:
+    branches: [main, "hardening/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-security-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Validate JSON manifests
+        run: |
+          jq empty .claude-plugin/plugin.json
+          jq empty .claude-plugin/marketplace.json
+          jq empty .mcp.json
+          jq empty hooks/hooks.json
+      - name: Check shell syntax
+        run: |
+          bash -n scripts/verify-before-push.sh
+          bash -n tests/verify-before-push.test.sh
+      - name: Run push-protection regression tests
+        run: bash tests/verify-before-push.test.sh
