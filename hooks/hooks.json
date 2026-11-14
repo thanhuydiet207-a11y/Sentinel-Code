@@ -16,11 +16,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // empty' | xargs -r npx prettier --write"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/format-after-edit.sh\""
           }
         ]
       }
