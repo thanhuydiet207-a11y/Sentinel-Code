@@ -88,22 +88,53 @@ new_repo quoted
 assert_allow "quoted feature refspec is allowed" "$TMP/quoted" "git push origin 'feature/test:feature/test'"
 
 new_repo first_push_secret
-printf 'AWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF\n' > "$TMP/first_push_secret/leak.txt"
+printf 'AWS_ACCESS_KEY_ID=%s%s\n' 'AKIA' '1234567890ABCDEF' > "$TMP/first_push_secret/leak.txt"
 git -C "$TMP/first_push_secret" add leak.txt
 git -C "$TMP/first_push_secret" commit -qm "add aws key"
 assert_block "secret is caught on first push without upstream" "$TMP/first_push_secret" "git push origin feature/test"
 
 new_repo pem
-printf '%s\n' '-----BEGIN OPENSSH PRIVATE KEY-----' 'example' '-----END OPENSSH PRIVATE KEY-----' > "$TMP/pem/leak.txt"
+printf '%s%s%s\n' '-----BEGIN ' 'OPENSSH PRIVATE KEY' '-----' > "$TMP/pem/leak.txt"
+printf '%s\n' 'example' '-----END OPENSSH PRIVATE KEY-----' >> "$TMP/pem/leak.txt"
 git -C "$TMP/pem" add leak.txt
 git -C "$TMP/pem" commit -qm "add private key"
 assert_block "OpenSSH private key is blocked" "$TMP/pem" "git push origin feature/test"
 
 new_repo github_token
-printf 'token=ghp_abcdefghijklmnopqrstuvwxyz1234567890\n' > "$TMP/github_token/leak.txt"
+printf 'token=%s%s\n' 'ghp_' 'abcdefghijklmnopqrstuvwxyz1234567890' > "$TMP/github_token/leak.txt"
 git -C "$TMP/github_token" add leak.txt
 git -C "$TMP/github_token" commit -qm "add token"
 assert_block "GitHub token is blocked" "$TMP/github_token" "git push origin feature/test"
+
+new_repo jwt_secret
+printf 'token=%s.%s.%s\n' 'eyJhbGciOiJIUzI1NiJ9' 'eyJzdWIiOiIxMjM0NTY3ODkwIn0' 'abcdefghijklmnopqrstuvwxyz1234567890' > "$TMP/jwt_secret/leak.txt"
+git -C "$TMP/jwt_secret" add leak.txt
+git -C "$TMP/jwt_secret" commit -qm "add jwt"
+assert_block "JWT-like bearer token is blocked" "$TMP/jwt_secret" "git push origin feature/test"
+
+new_repo database_uri
+printf '%s\n' 'postgresql://appuser:correcthorsebatterystaple@db.example.invalid/app' > "$TMP/database_uri/leak.txt"
+git -C "$TMP/database_uri" add leak.txt
+git -C "$TMP/database_uri" commit -qm "add database uri"
+assert_block "database connection URI with password is blocked" "$TMP/database_uri" "git push origin feature/test"
+
+new_repo cloud_key
+printf '%s\n' 'AccountKey=abcdefghijklmnopqrstuvwxyz0123456789ABCD==' > "$TMP/cloud_key/leak.txt"
+git -C "$TMP/cloud_key" add leak.txt
+git -C "$TMP/cloud_key" commit -qm "add cloud key"
+assert_block "cloud storage account key is blocked" "$TMP/cloud_key" "git push origin feature/test"
+
+new_repo named_api_key
+printf 'API_KEY=%s\n' 'abcdefghijklmnopqrstuvwxyz0123456789' > "$TMP/named_api_key/leak.txt"
+git -C "$TMP/named_api_key" add leak.txt
+git -C "$TMP/named_api_key" commit -qm "add api key"
+assert_block "named API key assignment is blocked" "$TMP/named_api_key" "git push origin feature/test"
+
+new_repo placeholder
+printf '%s\n' 'API_KEY=your_example_api_key_goes_here_123456789' > "$TMP/placeholder/config.env"
+git -C "$TMP/placeholder" add config.env
+git -C "$TMP/placeholder" commit -qm "add placeholder"
+assert_allow "obvious API key placeholder is allowed" "$TMP/placeholder" "git push origin feature/test"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
