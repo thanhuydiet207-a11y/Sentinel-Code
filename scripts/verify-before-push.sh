@@ -6,12 +6,105 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "[SecOps] BLOCK: jq is required to validate the PreToolUse payload." >&2
   exit 2
 fi
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[SecOps] BLOCK: python3 is required to safely parse Bash command arguments." >&2
+  exit 2
+fi
 if ! COMMAND_STR="$(printf '%s' "$INPUT_JSON" | jq -er '.tool_input.command | strings')"; then
   echo "[SecOps] BLOCK: invalid or missing tool_input.command payload." >&2
   exit 2
 fi
 
-if [[ ! "$COMMAND_STR" =~ (^|[[:space:];&|])git[[:space:]]+push([[:space:]]|$) ]]; then
+# Parse shell-like tokens with quoting support. This is deliberately conservative:
+# ambiguous pushes (implicit refspec, --all, --mirror, --tags) are blocked.
+if ! PUSH_INFO="$(COMMAND_STR="$COMMAND_STR" python3 - <<'PY'
+import os, shlex, sys
+command = os.environ.get("COMMAND_STR", "")
+try:
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|\n")
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    tokens = list(lexer)
+except ValueError as exc:
+    print(f"PARSE_ERROR:{exc}")
+    sys.exit(0)
+
+separators = {";", "&&", "||", "|", "&", "\n"}
+found = []
+i = 0
+while i < len(tokens):
+    if tokens[i] != "git":
+        i += 1
+        continue
+    j = i + 1
+    # Git global options that consume a value.
+    while j < len(tokens) and tokens[j] not in separators:
+        t = tokens[j]
+        if t in ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"):
+            j += 2
+        elif t.startswith(("--git-dir=", "--work-tree=", "--namespace=", "--exec-path=")):
+            j += 1
+        elif t.startswith("-") and t not in ("--",):
+            j += 1
+        else:
+            break
+    if j >= len(tokens) or tokens[j] != "push":
+        i += 1
+        continue
+    j += 1
+    positional = []
+    flags = []
+    while j < len(tokens) and tokens[j] not in separators:
+        t = tokens[j]
+        if t == "--":
+            positional.extend(tokens[j+1:])
+            break
+        if t in ("-o", "--push-option", "-r", "--repo", "--receive-pack", "--exec"):
+            j += 2
+            continue
+        if t.startswith(("--push-option=", "--repo=", "--receive-pack=", "--exec=")):
+            j += 1
+            continue
+        if t in ("--all", "--mirror", "--tags", "--delete", "-d"):
+            flags.append(t)
+        if t.startswith("-"):
+            j += 1
+            continue
+        positional.append(t)
+        j += 1
+
+    if any(flag in ("--all", "--mirror", "--tags") for flag in flags):
+        found.append("BLOCK_BROAD_PUSH:" + ",".join(flags))
+    else:
+        # A single positional argument is a repository, not a sufficiently
+        # explicit destination. No positional argument uses configured defaults.
+        refspecs = positional[1:] if len(positional) >= 2 else []
+        if not refspecs:
+            found.append("BLOCK_IMPLICIT_REFSPEC")
+        else:
+            for ref in refspecs:
+                if ":" in ref:
+                    dest = ref.rsplit(":", 1)[1]
+                else:
+                    dest = ref
+                dest = dest.lstrip("+").removeprefix("refs/heads/")
+                if any(ch in dest for ch in "*?[") or dest in ("", "HEAD"):
+                    found.append("BLOCK_AMBIGUOUS_REFSPEC:" + ref)
+                else:
+                    found.append("REFSPEC:" + dest)
+    i = j
+print("\n".join(found))
+PY
+)"; then
+  echo "[SecOps] BLOCK: unable to parse the Bash command safely." >&2
+  exit 2
+fi
+
+if [[ "$PUSH_INFO" == PARSE_ERROR:* ]]; then
+  echo "[SecOps] BLOCK: unable to parse the Bash command safely." >&2
+  exit 2
+fi
+if [[ -z "$PUSH_INFO" ]]; then
   exit 0
 fi
 
@@ -22,51 +115,36 @@ if [[ "$CURRENT_BRANCH" =~ $PROTECTED_BRANCH_RE ]]; then
   exit 2
 fi
 
-# Parse the git push arguments to inspect the actual destination refspec.
-read -r -a TOKENS <<< "$COMMAND_STR"
-GIT_INDEX=-1
-for i in "${!TOKENS[@]}"; do
-  if [[ "${TOKENS[$i]}" == "git" ]]; then GIT_INDEX=$i; break; fi
-done
-if (( GIT_INDEX < 0 )); then exit 0; fi
-
-i=$((GIT_INDEX + 1))
-while (( i < ${#TOKENS[@]} )); do
-  case "${TOKENS[$i]}" in
-    -C|-c|--git-dir|--work-tree) i=$((i + 2));;
-    push) break;;
-    *) i=$((i + 1));;
+while IFS= read -r entry; do
+  case "$entry" in
+    BLOCK_*)
+      echo "[SecOps] BLOCK: $entry. Use an explicit feature-branch refspec; broad or ambiguous pushes are not allowed." >&2
+      exit 2
+      ;;
+    REFSPEC:*)
+      destination="${entry#REFSPEC:}"
+      if [[ "$destination" =~ $PROTECTED_BRANCH_RE ]]; then
+        echo "[SecOps] BLOCK: push destination '$destination' is a protected branch. Use a feature branch and open a Pull Request." >&2
+        exit 2
+      fi
+      ;;
   esac
-done
-if (( i >= ${#TOKENS[@]} )) || [[ "${TOKENS[$i]}" != "push" ]]; then exit 0; fi
+done <<< "$PUSH_INFO"
 
-i=$((i + 1))
-POSITIONAL=()
-while (( i < ${#TOKENS[@]} )); do
-  token="${TOKENS[$i]}"
-  case "$token" in
-    --) i=$((i + 1)); while (( i < ${#TOKENS[@]} )); do POSITIONAL+=("${TOKENS[$i]}"); i=$((i + 1)); done; break;;
-    -o|--push-option|-r|--repo|--receive-pack|--exec) i=$((i + 2));;
-    --push-option=*|--repo=*|--receive-pack=*|--exec=*|-*) i=$((i + 1));;
-    *) POSITIONAL+=("$token"); i=$((i + 1));;
-  esac
-done
-
-# POSITIONAL[0] is the remote; POSITIONAL[1], when present, is the refspec.
-DESTINATION="$CURRENT_BRANCH"
-if (( ${#POSITIONAL[@]} >= 2 )); then
-  REFSPEC="${POSITIONAL[1]}"
-  REFSPEC="${REFSPEC#+}"
-  if [[ "$REFSPEC" == *:* ]]; then DESTINATION="${REFSPEC##*:}"; else DESTINATION="$REFSPEC"; fi
-fi
-DESTINATION="${DESTINATION#refs/heads/}"
-if [[ "$DESTINATION" =~ $PROTECTED_BRANCH_RE ]]; then
-  echo "[SecOps] BLOCK: push destination '$DESTINATION' is a protected branch. Use a feature branch and open a Pull Request." >&2
-  exit 2
+# If a push has no explicit refspec, it was already blocked. For an explicit
+# source-only refspec, Git's push.default/upstream can still choose a different
+# destination; reject protected upstreams rather than assuming source==target.
+UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+if [[ "$UPSTREAM" == */main || "$UPSTREAM" == */master || "$UPSTREAM" == */production ]]; then
+  while IFS= read -r entry; do
+    if [[ "$entry" == REFSPEC:* && "${entry#REFSPEC:}" != *:* ]]; then
+      echo "[SecOps] BLOCK: configured upstream '$UPSTREAM' is protected." >&2
+      exit 2
+    fi
+  done <<< "$PUSH_INFO"
 fi
 
-# Scan every local commit not already reachable from a remote-tracking ref.
-# This also covers a branch's first push, where @{u} does not exist yet.
+# Scan local commits not reachable from remote-tracking refs, including first push.
 SECRET_PATTERN='(AKIA[0-9A-Z]{16}|-----BEGIN ([A-Z0-9 ]+ )?PRIVATE KEY-----|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-ant-[A-Za-z0-9_-]{20,})'
 if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
   echo "[SecOps] BLOCK: cannot determine HEAD; refusing to push." >&2
