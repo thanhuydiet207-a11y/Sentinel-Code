@@ -145,14 +145,42 @@ if [[ "$UPSTREAM" == */main || "$UPSTREAM" == */master || "$UPSTREAM" == */produ
 fi
 
 # Scan local commits not reachable from remote-tracking refs, including first push.
-SECRET_PATTERN='(AKIA[0-9A-Z]{16}|-----BEGIN ([A-Z0-9 ]+ )?PRIVATE KEY-----|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-ant-[A-Za-z0-9_-]{20,})'
+# Detection is intentionally high-confidence and suppresses common placeholder values.
 if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
   echo "[SecOps] BLOCK: cannot determine HEAD; refusing to push." >&2
   exit 2
 fi
 while IFS= read -r commit; do
   [[ -z "$commit" ]] && continue
-  if git show --format= --no-ext-diff --no-renames "$commit" 2>/dev/null | grep -Eiq "$SECRET_PATTERN"; then
+  if git show --format= --no-ext-diff --no-renames "$commit" 2>/dev/null | python3 -c '
+import re, sys
+patterns = [
+    re.compile(r"\bA(?:KIA|SIA)[0-9A-Z]{16}\b"),
+    re.compile(r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+    re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{10,}\b"),
+    re.compile(r"(?i)\bAccountKey=[A-Za-z0-9+/]{20,}={0,2}"),
+    re.compile(r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s/:@]+:[^\s@]+@"),
+    re.compile(r"(?i)\b(?:api[_-]?key|secret[_-]?key|client[_-]?secret|access[_-]?token)\s*[:=]\s*[\"\x27]?([A-Za-z0-9_./+=-]{24,})"),
+]
+placeholders = ("example", "changeme", "your_", "dummy", "test_", "redacted", "placeholder", "xxxx")
+for line in sys.stdin:
+    if line.startswith(("--- ", "+++ ")):
+        continue
+    for pattern in patterns:
+        match = pattern.search(line)
+        if match:
+            value = match.group(1) if match.lastindex else match.group(0)
+            if any(word in value.lower() for word in placeholders):
+                continue
+            print("SECRET_FOUND")
+            sys.exit(0)
+sys.exit(1)
+'; then
     echo "[SecOps] BLOCK: secret-like material found in unpushed commit $commit. Remove it from Git history and rotate the credential." >&2
     exit 2
   fi
