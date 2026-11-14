@@ -1,4 +1,4 @@
-import { describe, expect, mock, test, tier } from 'claude-code/testing';
+import { describe, expect, test, tier } from 'claude-code/testing';
 
 tier('user');
 
@@ -7,7 +7,8 @@ describe('register', () => {
     const registeredCommands: string[] = [];
     const openedPanes: string[] = [];
 
-    mock.store(on, {});
+    on('store.get', () => ({ value: undefined }));
+    on('store.set', () => ({ value: undefined }));
     on('session.start', ($, e) => ({ cwd: e.cwd }));
     on('command.register', ($, e) => {
       registeredCommands.push(e.name);
