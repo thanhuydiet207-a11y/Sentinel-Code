@@ -151,6 +151,30 @@ git -C "$TMP/placeholder" add config.env
 git -C "$TMP/placeholder" commit -qm "add placeholder"
 assert_allow "obvious API key placeholder is allowed" "$TMP/placeholder" "git push origin feature/test"
 
+new_repo stripe_test_key
+printf '%s\\n' 'STRIPE_SECRET_KEY=sk_test_1234567890abcdefghijklmnop' > "$TMP/stripe_test_key/config.env"
+git -C "$TMP/stripe_test_key" add config.env
+git -C "$TMP/stripe_test_key" commit -qm "add stripe test key"
+assert_block "Stripe test-mode secret key is blocked" "$TMP/stripe_test_key" "git push origin feature/test"
+
+new_repo google_api_key
+printf '%s\\n' 'GOOGLE_API_KEY=AIza0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ' > "$TMP/google_api_key/config.env"
+git -C "$TMP/google_api_key" add config.env
+git -C "$TMP/google_api_key" commit -qm "add Google API key"
+assert_block "Google API key is blocked" "$TMP/google_api_key" "git push origin feature/test"
+
+new_repo npm_token
+printf '%s\\n' 'NPM_TOKEN=npm_abcdefghijklmnopqrstuvwxyz1234567890ABCD' > "$TMP/npm_token/config.env"
+git -C "$TMP/npm_token" add config.env
+git -C "$TMP/npm_token" commit -qm "add npm token"
+assert_block "npm access token is blocked" "$TMP/npm_token" "git push origin feature/test"
+
+new_repo example_substring
+printf '%s\\n' 'API_KEY=prod_example_abcdefghijklmnopqrstuvwxyz123456789' > "$TMP/example_substring/config.env"
+git -C "$TMP/example_substring" add config.env
+git -C "$TMP/example_substring" commit -qm "add credential containing example substring"
+assert_block "credential containing example as a substring is not suppressed" "$TMP/example_substring" "git push origin feature/test"
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 (( FAIL == 0 ))
