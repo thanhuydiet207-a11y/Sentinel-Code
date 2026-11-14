@@ -1,0 +1,28 @@
+{
+  "modules": ["./register.js"],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git push *)",
+            "command": "\"\u0024{CLAUDE_PLUGIN_ROOT}/scripts/verify-before-push.sh\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | xargs -r npx prettier --write"
+          }
+        ]
+      }
+    ]
+  }
+}
