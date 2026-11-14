@@ -15,85 +15,137 @@ if ! COMMAND_STR="$(printf '%s' "$INPUT_JSON" | jq -er '.tool_input.command | st
   exit 2
 fi
 
-# Parse shell-like tokens with quoting support. This is deliberately conservative:
-# ambiguous pushes (implicit refspec, --all, --mirror, --tags) are blocked.
+# Parse shell-like tokens with quoting support. Inspect common command wrappers
+# as well as direct Git invocations; this is not a full Bash interpreter.
 if ! PUSH_INFO="$(COMMAND_STR="$COMMAND_STR" python3 - <<'PY'
-import os, shlex, sys
+import os, re, shlex, sys
+
 command = os.environ.get("COMMAND_STR", "")
-try:
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|\n")
+separators = {";", "&&", "||", "|", "&", "\n"}
+assignment = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+shells = {"sh", "bash", "dash", "zsh", "ksh"}
+
+def tokenize(source):
+    lexer = shlex.shlex(source, posix=True, punctuation_chars=";&|\n")
     lexer.whitespace_split = True
     lexer.commenters = ""
-    tokens = list(lexer)
-except ValueError as exc:
-    print(f"PARSE_ERROR:{exc}")
-    sys.exit(0)
+    return list(lexer)
 
-separators = {";", "&&", "||", "|", "&", "\n"}
-found = []
-i = 0
-while i < len(tokens):
-    if tokens[i] != "git":
-        i += 1
-        continue
-    j = i + 1
-    # Git global options that consume a value.
-    while j < len(tokens) and tokens[j] not in separators:
-        t = tokens[j]
-        if t in ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"):
-            j += 2
-        elif t.startswith(("--git-dir=", "--work-tree=", "--namespace=", "--exec-path=")):
-            j += 1
-        elif t.startswith("-") and t not in ("--",):
-            j += 1
-        else:
-            break
-    if j >= len(tokens) or tokens[j] != "push":
-        i += 1
-        continue
-    j += 1
-    positional = []
-    flags = []
-    while j < len(tokens) and tokens[j] not in separators:
-        t = tokens[j]
-        if t == "--":
-            positional.extend(tokens[j+1:])
-            break
-        if t in ("-o", "--push-option", "-r", "--repo", "--receive-pack", "--exec"):
-            j += 2
-            continue
-        if t.startswith(("--push-option=", "--repo=", "--receive-pack=", "--exec=")):
+def command_index(tokens, start, end):
+    j = start
+    wrappers = {"sudo", "env", "command", "exec", "nohup", "time", "nice", "stdbuf"}
+    takes_value = {
+        "sudo": {"-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "--close-from", "-T", "--command-timeout", "-R", "--chroot", "-D", "--chdir"},
+        "env": {"-u", "--unset", "-C", "--chdir"},
+        "time": {"-o", "--output", "-f", "--format"},
+        "nice": {"-n", "--adjustment"},
+        "stdbuf": {"-i", "-o", "-e"},
+    }
+    while j < end:
+        if assignment.match(tokens[j]):
             j += 1
             continue
-        if t in ("--all", "--mirror", "--tags", "--delete", "-d"):
-            flags.append(t)
-        if t.startswith("-"):
-            j += 1
-            continue
-        positional.append(t)
+        wrapper = tokens[j]
+        if wrapper not in wrappers:
+            return j
         j += 1
+        while j < end:
+            token = tokens[j]
+            if token == "--":
+                j += 1
+                break
+            if wrapper == "env" and assignment.match(token):
+                j += 1
+                continue
+            if token in takes_value.get(wrapper, set()):
+                j += 2
+                continue
+            if token.startswith("-"):
+                j += 1
+                continue
+            break
+    return j
 
-    if any(flag in ("--all", "--mirror", "--tags") for flag in flags):
-        found.append("BLOCK_BROAD_PUSH:" + ",".join(flags))
-    else:
-        # A single positional argument is a repository, not a sufficiently
-        # explicit destination. No positional argument uses configured defaults.
-        refspecs = positional[1:] if len(positional) >= 2 else []
-        if not refspecs:
-            found.append("BLOCK_IMPLICIT_REFSPEC")
-        else:
-            for ref in refspecs:
-                if ":" in ref:
-                    dest = ref.rsplit(":", 1)[1]
+def inspect(tokens, depth=0):
+    if depth > 4:
+        return ["PARSE_ERROR:nested shell command depth exceeded"]
+    found = []
+    i = 0
+    while i < len(tokens):
+        while i < len(tokens) and tokens[i] in separators:
+            i += 1
+        if i >= len(tokens):
+            break
+        end = i
+        while end < len(tokens) and tokens[end] not in separators:
+            end += 1
+        cmd = command_index(tokens, i, end)
+        if cmd < end and tokens[cmd] in shells:
+            # Inspect scripts passed to sh/bash -c, including sudo/command wrappers.
+            for k in range(cmd + 1, end - 1):
+                if tokens[k] in ("-c", "-lc", "-cl", "-ec", "-ce"):
+                    try:
+                        found.extend(inspect(tokenize(tokens[k + 1]), depth + 1))
+                    except ValueError as exc:
+                        found.append("PARSE_ERROR:" + str(exc))
+                    break
+        elif cmd < end and tokens[cmd] == "git":
+            j = cmd + 1
+            while j < end:
+                t = tokens[j]
+                if t in ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"):
+                    j += 2
+                elif t.startswith(("--git-dir=", "--work-tree=", "--namespace=", "--exec-path=")):
+                    j += 1
+                elif t.startswith("-") and t != "--":
+                    j += 1
                 else:
-                    dest = ref
-                dest = dest.lstrip("+").removeprefix("refs/heads/")
-                if any(ch in dest for ch in "*?[") or dest in ("", "HEAD"):
-                    found.append("BLOCK_AMBIGUOUS_REFSPEC:" + ref)
+                    break
+            if j < end and tokens[j] == "push":
+                j += 1
+                positional = []
+                flags = []
+                while j < end:
+                    t = tokens[j]
+                    if t == "--":
+                        positional.extend(tokens[j + 1:end])
+                        break
+                    if t in ("-o", "--push-option", "-r", "--repo", "--receive-pack", "--exec"):
+                        j += 2
+                        continue
+                    if t.startswith(("--push-option=", "--repo=", "--receive-pack=", "--exec=")):
+                        j += 1
+                        continue
+                    if t in ("--all", "--mirror", "--tags", "--delete", "-d"):
+                        flags.append(t)
+                    if t.startswith("-"):
+                        j += 1
+                        continue
+                    positional.append(t)
+                    j += 1
+
+                if any(flag in ("--all", "--mirror", "--tags") for flag in flags):
+                    found.append("BLOCK_BROAD_PUSH:" + ",".join(flags))
                 else:
-                    found.append("REFSPEC:" + dest)
-    i = j
-print("\n".join(found))
+                    refspecs = positional[1:] if len(positional) >= 2 else []
+                    if not refspecs:
+                        found.append("BLOCK_IMPLICIT_REFSPEC")
+                    else:
+                        for ref in refspecs:
+                            dest = ref.rsplit(":", 1)[1] if ":" in ref else ref
+                            dest = dest.lstrip("+").removeprefix("refs/heads/")
+                            if any(ch in dest for ch in "*?[") or dest in ("", "HEAD"):
+                                found.append("BLOCK_AMBIGUOUS_REFSPEC:" + ref)
+                            else:
+                                found.append("REFSPEC:" + dest)
+        i = end + 1
+    return found
+
+try:
+    result = inspect(tokenize(command))
+except ValueError as exc:
+    result = ["PARSE_ERROR:" + str(exc)]
+print("\n".join(result))
 PY
 )"; then
   echo "[SecOps] BLOCK: unable to parse the Bash command safely." >&2
