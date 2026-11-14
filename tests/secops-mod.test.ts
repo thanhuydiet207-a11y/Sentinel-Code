@@ -14,9 +14,9 @@ describe('register', () => {
       registeredCommands.push(e.name);
       return { value: { command: e.name } };
     });
-    on('ui.open', ($, e, next) => {
+    on('ui.open', ($, e) => {
       openedPanes.push(e.id);
-      return next(e);
+      return { value: { isPlaced: true } };
     });
 
     await $.session.start({
