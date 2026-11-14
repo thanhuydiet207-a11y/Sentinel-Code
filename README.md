@@ -57,10 +57,27 @@ export SECOPS_READONLY_DATABASE_URL="<read-only-postgres-connection>"
 
 ## 4. Chạy thử và kiểm thử
 
+Kiểm tra cấu trúc plugin và bộ benchmark (không gọi model, không phát sinh phí):
+
 ```bash
 claude plugin validate --strict .
-claude --plugin-dir .
-claude plugin eval . --judge-model sonnet
+python3 tests/validate-eval-suite.py
 ```
 
-Workflow GitHub Actions cần secret `ANTHROPIC_API_KEY` trong Settings → Secrets and variables → Actions. Không lưu token hoặc thông tin kết nối thật trong repository.
+Bộ eval gồm 5 tình huống: SQL Injection + log token, IDOR, SSRF, stored XSS và negative control (mã an toàn). Mỗi case có grader chấm kết quả bảo mật bằng LLM và grader xác nhận Skill `pr-security-review` đã được gọi.
+
+Chạy smoke eval một lượt cho mỗi case, không so sánh baseline:
+
+```bash
+claude plugin eval . --runs 1 --ablation none --threshold 0.8 --no-publish --max-cost-usd 5
+```
+
+Để đánh giá ổn định hơn và so sánh với baseline không có plugin, chạy mặc định:
+
+```bash
+claude plugin eval . --judge-model sonnet --threshold 0.8 --no-publish
+```
+
+**Lưu ý chi phí:** eval gọi model thật; grader `llm` cũng dùng judge model. Không chạy trong CI mỗi lần push để tránh tiêu tốn hạn mức/API. CI chỉ xác thực cấu trúc suite; kết quả benchmark chất lượng phải được chạy riêng và lưu báo cáo. Các case được thiết kế để đánh giá hành vi, không chứng minh plugin phát hiện được mọi lỗ hổng.
+
+Workflow AI PR review tùy chọn có thể dùng secret `ANTHROPIC_API_KEY` trong Settings → Secrets and variables → Actions. Không lưu token hoặc thông tin kết nối thật trong repository.
