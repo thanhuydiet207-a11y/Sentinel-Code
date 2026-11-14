@@ -28,11 +28,11 @@ def main():
         rel = case.relative_to(ROOT)
         try:
             prompt_meta, prompt_body = frontmatter(case / "prompt.md")
-            if not re.search(r"(?m)^name:\\s*\\S+", prompt_meta):
+            if not re.search(r"(?m)^name:\s*\S+", prompt_meta):
                 errors.append(f"{rel}: prompt frontmatter must declare name")
             if 'plugins: ["../.."]' not in prompt_meta:
                 errors.append(f"{rel}: plugin path must resolve to repository root")
-            if not re.search(r"(?m)^allowed_tools:.*\\bSkill\\b", prompt_meta):
+            if not re.search(r"(?m)^allowed_tools:.*\bSkill\b", prompt_meta):
                 errors.append(f"{rel}: allowed_tools must include Skill")
             graders_dir = case / "graders"
             graders = sorted(graders_dir.glob("*.md")) if graders_dir.is_dir() else []
@@ -42,7 +42,7 @@ def main():
             types = {}
             for grader in graders:
                 meta, body = frontmatter(grader)
-                match = re.search(r"(?m)^type:\\s*(\\w+)", meta)
+                match = re.search(r"(?m)^type:\s*(\w+)", meta)
                 if not match:
                     errors.append(f"{grader.relative_to(ROOT)}: missing grader type")
                     continue
@@ -53,10 +53,9 @@ def main():
                 errors.append(f"{rel}: llm grader rubric is empty")
             if "tool_used" not in types:
                 errors.append(f"{rel}: a tool_used grader is required to track skill invocation")
-            else:
-                if not any(re.search(r"(?m)^tool:\\s*Skill\\s*$", meta) and "pr-security-review" in meta
-                           for _, meta, _ in types["tool_used"]):
-                    errors.append(f"{rel}: tool_used grader must assert pr-security-review")
+            elif not any(re.search(r"(?m)^tool:\s*Skill\s*$", meta) and "pr-security-review" in meta
+                         for _, meta, _ in types["tool_used"]):
+                errors.append(f"{rel}: tool_used grader must assert pr-security-review")
             if not prompt_body.strip():
                 errors.append(f"{rel}: prompt body is empty")
         except (OSError, ValueError) as exc:
