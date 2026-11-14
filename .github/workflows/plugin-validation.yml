@@ -27,5 +27,9 @@ jobs:
         run: |
           bash -n scripts/verify-before-push.sh
           bash -n tests/verify-before-push.test.sh
+          bash -n scripts/format-after-edit.sh
+          bash -n tests/format-after-edit.test.sh
       - name: Run push-protection regression tests
-        run: bash tests/verify-before-push.test.sh
+        run: |
+          bash tests/verify-before-push.test.sh
+          bash tests/format-after-edit.test.sh
