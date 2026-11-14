@@ -45,6 +45,8 @@ claude plugin marketplace add Thanhuydiet207-a11y/Sentinel-Code
 claude plugin install secops-review-kit@internal-secops-marketplace --scope project
 ```
 
+**Quan trọng:** `postgres-readonly` chỉ là tên cấu hình; quyền chỉ đọc phải được áp dụng trực tiếp bằng role PostgreSQL và quyền của credential GitHub/Sentry phải được giới hạn. Xem [hướng dẫn cấu hình bảo mật MCP](docs/MCP-SECURITY.md).
+
 Cấp quyền thực thi cho hook và khai báo các biến môi trường cần thiết cho MCP:
 
 ```bash
