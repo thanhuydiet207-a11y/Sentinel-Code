@@ -218,3 +218,12 @@ python3 -m sentinel_core validate-patch proposal.json findings.json \\
 \`\`\`
 
 A proposal must identify the finding, exact repository-relative source path, current file SHA-256, and a single-file unified diff. Stale hashes, mismatched paths, traversal, invalid hunk context, and unsupported patches are rejected. The output contains candidate content and its hash; it is not applied automatically. See [Remediation Patch Validation](docs/REMEDIATION-PATCH-VALIDATION.md).
+
+
+## Phase 4B: Remediation Test Sandbox
+
+Run explicit test/scanner commands against a candidate in a temporary workspace without modifying the repository:
+
+    python3 -m sentinel_core test-candidate proposal.json --root . --timeout 120 --output artifacts/candidate-tests.json
+
+Proposal JSON contains \`candidate_path\`, \`candidate_content\`, and \`commands\` (argv arrays). Commands are allowlisted, shell execution is disabled, and the runner stops on the first failure or timeout. This temporary workspace is **not OS-level isolation**; see [sandbox limitations](docs/REMEDIATION-TEST-SANDBOX.md). Do not run untrusted candidate code without a disposable container or VM.
