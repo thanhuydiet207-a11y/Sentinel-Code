@@ -175,6 +175,13 @@ git -C "$TMP/example_substring" add config.env
 git -C "$TMP/example_substring" commit -qm "add credential containing example substring"
 assert_block "credential containing example as a substring is not suppressed" "$TMP/example_substring" "git push origin feature/test"
 
+
+new_repo twilio_token
+printf '%s\\n' 'TWILIO_AUTH_TOKEN=SG.abcdefghijklmnopqrstuvwxyz1234567890.ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890' > "$TMP/twilio_token/config.env"
+git -C "$TMP/twilio_token" add config.env
+git -C "$TMP/twilio_token" commit -qm "add Twilio token"
+assert_block "Twilio auth token is blocked" "$TMP/twilio_token" "git push origin feature/test"
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 (( FAIL == 0 ))
