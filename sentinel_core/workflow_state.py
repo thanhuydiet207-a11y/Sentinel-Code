@@ -156,9 +156,10 @@ def verify_workflow(state: Any) -> dict:
         stage = event.get("stage")
         status = event.get("status")
         prior_status = latest.get(stage)
-        if prior_status is not None and prior_status != "failed" and status != "retry": errors.append(f"checkpoint_{i}_invalid_attempt_transition")
+        if prior_status in {"completed", "skipped"}: errors.append(f"checkpoint_{i}_duplicate_terminal_stage")
         if prior_status == "failed" and status != "retry": errors.append(f"checkpoint_{i}_retry_marker_missing")
         if status == "retry" and prior_status != "failed": errors.append(f"checkpoint_{i}_retry_without_failure")
+        if prior_status == "retry" and status not in {"completed", "failed", "skipped"}: errors.append(f"checkpoint_{i}_invalid_retry_result")
         if status not in _ALLOWED: errors.append(f"checkpoint_{i}_invalid_status")
         latest[stage] = status
         if event.get("previous_hash") != previous: errors.append(f"checkpoint_{i}_previous_hash_mismatch")
