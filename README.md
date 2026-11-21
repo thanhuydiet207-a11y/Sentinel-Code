@@ -289,3 +289,20 @@ python3 -m sentinel_core remediation-orchestrate remediation-package.json \
 AI calls remain opt-in: include `ai_providers` in the input package to run the existing independent, challenger, and adjudicator stages. Phase 4J policy options can require adjudicator reviewer count, complete finding coverage, minimum confidence, and a maximum number of cross-stage disagreements. Missing or disputed AI evidence yields manual review; AI agreement is not proof of correctness. No patch is automatically applied or merged, and human approval remains mandatory.
 
 See [Phase 4I remediation orchestration](docs/phase4i-remediation-orchestrator.md) and [Phase 4J AI adjudication policy gates](docs/phase4j-ai-adjudication-gates.md).
+
+
+## Phase 4K: Persistent workflow checkpoints
+
+Sentinel-Code now includes a local checkpoint store for long-running workflow callers. Completed stage outputs are persisted with digests and a hash-chained event history; resume planning validates the chain and input digest before identifying remaining stages.
+
+```bash
+sentinel-security workflow-start --store .sentinel-workflows \
+  --workflow-id run-001 --stages validate review sandbox regression policy \
+  --input-digest <sha256>
+sentinel-security workflow-checkpoint --store .sentinel-workflows \
+  --workflow-id run-001 --stage validate --status completed --output validation.json
+sentinel-security workflow-resume-plan --store .sentinel-workflows \
+  --workflow-id run-001 --input-digest <sha256>
+```
+
+See [Phase 4K checkpoint/resume docs](docs/phase4k-persistent-workflow-resume.md). The checkpoint engine is a persistence primitive, not yet automatic orchestration around all Phase 4I stages. Failed runs are blocked from automatic resume; external side effects require caller revalidation.
