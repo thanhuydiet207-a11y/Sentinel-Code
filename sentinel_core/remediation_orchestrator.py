@@ -206,10 +206,18 @@ def run_remediation_orchestration(
         stages["patch_validation"] = {"status": "fail", "valid": False, "error": str(exc)}
 
     try:
-        risk = review_patch_risk(proposal)
-        stages["patch_risk"] = {"status": "complete", "risk_score": risk["risk_score"],
-                                "risk_level": risk["risk_level"], "flags": risk["flags"]}
-    except (TypeError, ValueError) as exc:
+        if checkpoint_store is not None and "patch_risk" in restored:
+            cached = restored["patch_risk"]
+            risk, risk_stage = cached["risk"], cached["stage"]
+        else:
+            risk = review_patch_risk(proposal)
+            risk_stage = {"status": "complete", "risk_score": risk["risk_score"],
+                          "risk_level": risk["risk_level"], "flags": risk["flags"]}
+            if checkpoint_store is not None:
+                checkpoint_stage(checkpoint_store, workflow_id, "patch_risk", "completed",
+                                 {"risk": risk, "stage": risk_stage})
+        stages["patch_risk"] = risk_stage
+    except (TypeError, ValueError, KeyError) as exc:
         risk = None
         stages["patch_risk"] = {"status": "not_run", "error": str(exc)}
 
