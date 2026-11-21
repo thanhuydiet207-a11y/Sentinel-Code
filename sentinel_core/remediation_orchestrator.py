@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import math
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -16,6 +18,7 @@ from .regression import compare_scan_snapshots
 from .remediation_report import build_remediation_report
 from .remediation_sandbox import run_remediation_sandbox
 from .security_pipeline import run_security_pipeline
+from .workflow_state import create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow
 
 
 def run_remediation_orchestration(
@@ -32,6 +35,8 @@ def run_remediation_orchestration(
     scanner_inputs: Any = None,
     ai_providers: Any = None,
     timeout_seconds: int = 120,
+    checkpoint_store: str | Path | None = None,
+    workflow_id: str | None = None,
 ) -> dict:
     """Run all locally executable remediation gates without modifying repository files.
 
@@ -46,6 +51,37 @@ def run_remediation_orchestration(
         raise ValueError("proposal must be an object")
     if not isinstance(policy, dict):
         raise ValueError("policy must be an object")
+
+    checkpoint_digest = None
+    if checkpoint_store is not None:
+        if not isinstance(workflow_id, str) or not workflow_id:
+            raise ValueError("workflow_id is required when checkpoint_store is supplied")
+        checkpoint_inputs = {
+            "findings_payload": findings_payload, "proposal": proposal, "repository_root": str(root),
+            "baseline_scan": baseline_scan, "candidate_scan": candidate_scan,
+            "sandbox_commands": sandbox_commands, "policy": policy, "scanner_names": scanner_names,
+            "reviewer_names": reviewer_names, "sealed_evidence": sealed_evidence,
+            "scanner_inputs": scanner_inputs, "ai_providers": ai_providers,
+            "timeout_seconds": timeout_seconds,
+        }
+        try:
+            canonical = json.dumps(checkpoint_inputs, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("checkpointed orchestration inputs must be JSON-serializable") from exc
+        checkpoint_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        try:
+            existing = load_workflow(checkpoint_store, workflow_id)
+        except FileNotFoundError:
+            create_workflow(checkpoint_store, workflow_id, ["orchestration"], checkpoint_digest,
+                           metadata={"workflow": "sentinel-remediation-orchestrator-v1"})
+        else:
+            if existing.get("input_digest") != checkpoint_digest:
+                raise ValueError("checkpoint input digest mismatch; use a new workflow_id")
+            restored = checkpoint_outputs(checkpoint_store, workflow_id, checkpoint_digest)
+            if "orchestration" in restored:
+                return restored["orchestration"]
+            if existing.get("status") != "running":
+                raise ValueError("checkpoint workflow is not resumable")
 
     stages: dict[str, dict] = {}
     security_review = None
@@ -255,7 +291,7 @@ def run_remediation_orchestration(
         "status": "verified" if audit_verification["valid"] else "invalid",
         "event_count": audit_verification["event_count"],
     }
-    return {
+    result = {
         "schema_version": "1.0", "workflow": "sentinel-remediation-orchestrator-v1",
         "status": overall, "stages": stages, "policy": policy_result,
         "security_review": security_review,
@@ -276,3 +312,6 @@ def run_remediation_orchestration(
             "A passing policy is not authorization to apply or merge a patch.",
         ],
     }
+    if checkpoint_store is not None:
+        checkpoint_stage(checkpoint_store, workflow_id, "orchestration", "completed", result)
+    return result
