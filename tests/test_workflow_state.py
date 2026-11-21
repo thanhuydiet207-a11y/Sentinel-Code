@@ -103,7 +103,7 @@ class WorkflowStateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             create_workflow(tmp, "retry-invalid", ["a"], _DIGEST)
             checkpoint_stage(tmp, "retry-invalid", "a", "completed")
-            with self.assertRaisesRegex(ValueError, "latest failed"):
+            with self.assertRaisesRegex(ValueError, "workflow is not retryable"):
                 retry_stage(tmp, "retry-invalid", "a")
 
     def test_failed_stage_retry_history_is_hash_chained(self):
