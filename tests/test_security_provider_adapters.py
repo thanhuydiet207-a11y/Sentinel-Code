@@ -8,6 +8,7 @@ from sentinel_core.provider_adapters import _parse_review_response, _review_prom
 FINDINGS = {"findings": [{"id": "F-1", "title": "Potential injection", "severity": "high", "location": {"path": "app.py", "start_line": 7}, "evidence": {"snippet": "query = input()"}, "description": "User input reaches query"}]}
 VOTE = {"reviews": [{"finding_id": "F-1", "verdict": "likely", "confidence": 0.72, "rationale": "Evidence suggests user input reaches query construction.", "evidence_refs": ["app.py:7"]}]}
 
+
 class ProviderAdapterTests(unittest.TestCase):
     def fake_transport(self, method, url, headers, body):
         request = json.loads(body)
@@ -28,6 +29,17 @@ class ProviderAdapterTests(unittest.TestCase):
         fence = chr(96) * 3
         fenced = fence + "json" + chr(10) + json.dumps(VOTE) + chr(10) + fence
         self.assertEqual(_parse_review_response(fenced), VOTE["reviews"])
+
+    def test_all_three_adapters_normalize(self):
+        env = {
+            "SENTINEL_OPENAI_API_KEY": "fake",
+            "SENTINEL_ANTHROPIC_API_KEY": "fake",
+            "SENTINEL_GEMINI_API_KEY": "fake",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            result = run_provider_reviews(FINDINGS, ["openai", "anthropic", "gemini"], self.fake_transport)
+        self.assertEqual([r["provider"] for r in result["reviewers"]], ["openai", "anthropic", "gemini"])
+        self.assertTrue(all(r["reviews"][0]["finding_id"] == "F-1" for r in result["reviewers"]))
 
     def test_openai_adapter_normalizes_and_validates(self):
         with patch.dict(os.environ, {"SENTINEL_OPENAI_API_KEY": "test-secret"}, clear=False):
@@ -57,6 +69,7 @@ class ProviderAdapterTests(unittest.TestCase):
     def test_invalid_provider_response_rejected(self):
         with self.assertRaises(ValueError):
             _parse_review_response('{"unexpected": []}')
+
 
 if __name__ == "__main__":
     unittest.main()
