@@ -144,6 +144,7 @@ def evaluate_policy(policy: Any, evidence: Any) -> dict:
             reviewer_count = ai_review.get("reviewer_count")
             finding_count = ai_review.get("finding_count")
             adjudicated_count = ai_review.get("adjudicated_finding_count")
+            cross_stage_count = ai_review.get("cross_stage_finding_count")
             disagreements = ai_review.get("cross_stage_disagreements")
             confidence = ai_review.get("minimum_confidence")
             if not isinstance(reviewer_count, int) or isinstance(reviewer_count, bool) or reviewer_count < min_adjudicators:
@@ -153,6 +154,11 @@ def evaluate_policy(policy: Any, evidence: Any) -> dict:
                     or not isinstance(adjudicated_count, int) or isinstance(adjudicated_count, bool)
                     or adjudicated_count != finding_count):
                 missing.append("adjudicator_finding_coverage_incomplete")
+                ai_gate_pass = False
+            if (not isinstance(finding_count, int) or isinstance(finding_count, bool)
+                    or not isinstance(cross_stage_count, int) or isinstance(cross_stage_count, bool)
+                    or cross_stage_count != finding_count):
+                missing.append("cross_stage_finding_coverage_incomplete")
                 ai_gate_pass = False
             if not isinstance(disagreements, int) or isinstance(disagreements, bool) or disagreements < 0:
                 missing.append("cross_stage_disagreement_count_missing")
