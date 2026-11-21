@@ -63,7 +63,8 @@ def audit_retry_pipeline(connection: sqlite3.Connection) -> dict:
 
         for key_digest in reservation_keys - set(atomic_by_key):
             findings.append({"code": "reservation_without_atomic_job"})
-        for key_digest, (job_id, _status, raw) in atomic_by_key.items():
+        for key_digest, row in atomic_by_key.items():
+            job_id, _stored_key_digest, _status, raw = row
             if key_digest not in reservation_keys:
                 findings.append({"code": "atomic_job_without_reservation", "job_id": job_id})
             try:
