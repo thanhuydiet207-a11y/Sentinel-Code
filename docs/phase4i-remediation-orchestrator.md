@@ -1,0 +1,65 @@
+# Phase 4I — Remediation Orchestrator
+
+The remediation orchestrator connects the existing patch validator, patch-risk estimator, temporary-workspace sandbox, scan regression comparator, evidence-provenance verifier, and Phase 4H policy engine.
+
+## CLI
+
+```bash
+sentinel-security remediation-orchestrate remediation-package.json --root . --timeout 120 --output remediation-result.json
+```
+
+The input package is JSON with this shape:
+
+```json
+{
+  "findings_payload": {
+    "findings": [
+      {
+        "id": "F-1",
+        "location": { "path": "src/example.py" }
+      }
+    ]
+  },
+  "proposal": {
+    "finding_id": "F-1",
+    "path": "src/example.py",
+    "base_sha256": "<sha256-of-current-file>",
+    "patch": "--- a/src/example.py\n+++ b/src/example.py\n@@ -1 +1 @@\n-old_value = 1\n+old_value = 2\n"
+  },
+  "baseline_scan": { "findings": [] },
+  "candidate_scan": { "findings": [] },
+  "sandbox_commands": [["python", "-m", "unittest", "discover"]],
+  "scanner_names": ["semgrep", "gitleaks"],
+  "reviewer_names": ["openai"],
+  "sealed_evidence": {},
+  "policy": {
+    "policy_id": "production-remediation",
+    "version": 1,
+    "max_risk_score": 25,
+    "required_scanners": ["semgrep", "gitleaks"],
+    "required_reviewers": ["openai"],
+    "min_reviewers": 1,
+    "require_evidence_verified": true,
+    "require_sandbox_pass": true,
+    "require_regression_clean": true,
+    "require_manual_approval": true
+  }
+}
+```
+
+Replace example paths, hashes, patch content, scan snapshots, reviewer/scanner identities, and evidence bundle with actual artifacts. Omit `sealed_evidence` only when the policy explicitly permits missing provenance; the default policy semantics return REVIEW until evidence is verified. An absent sandbox or scan is REVIEW. An executed sandbox failure, regression finding, patch-validation failure, or invalid evidence seal is BLOCK.
+
+## Execution boundaries
+
+- Patch validation calculates candidate content and never edits the repository.
+- Sandbox commands run against a temporary copy with an executable allowlist, no shell, and a timeout. This is not OS-level isolation.
+- Baseline/candidate scanner snapshots are consumed as inputs. This command does not launch scanner executables.
+- Scanner and reviewer names are caller-supplied labels; they are not independently authenticated.
+- Provenance checks hashes for supplied artifacts but does not prove who created them or when.
+- PASS means configured evidence gates passed. It never authorizes patch application or merge; human approval remains mandatory.
+
+## Outcomes
+
+- `ready_for_human_approval`: all configured gates passed, still requires a human decision.
+- `needs_review`: one or more required evidence inputs or stages are missing/not run.
+- `blocked`: a required operation ran and failed, patch validation failed, regression was detected, risk exceeded policy, or evidence integrity failed.
