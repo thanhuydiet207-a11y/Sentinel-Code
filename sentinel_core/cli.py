@@ -14,6 +14,7 @@ from .false_positive import analyze_findings
 from .ai_review import aggregate_reviews
 from .provider_adapters import run_provider_reviews
 from .evidence_verification import verify_ai_evidence
+from .adversarial_review import run_adversarial_reviews
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -79,6 +80,11 @@ def build_parser() -> argparse.ArgumentParser:
     consensus_parser.add_argument("findings")
     consensus_parser.add_argument("reviews")
     consensus_parser.add_argument("--output")
+
+    adversarial_parser = sub.add_parser("adversarial-review", help="Run independent, challenger, and adjudicator AI review stages")
+    adversarial_parser.add_argument("findings")
+    adversarial_parser.add_argument("--providers", nargs="+", choices=("openai", "anthropic", "gemini"), required=True)
+    adversarial_parser.add_argument("--output", required=True)
 
     verify_parser = sub.add_parser("verify-ai-evidence", help="Verify AI reviewer evidence references against local source")
     verify_parser.add_argument("findings")
@@ -159,6 +165,13 @@ def main(argv: list[str] | None = None) -> int:
             findings_data = load_json(args.findings)
             reviews_data = load_json(args.reviews)
             _write_json(aggregate_reviews(findings_data, reviews_data), args.output)
+            return 0
+
+        if args.command == "adversarial-review":
+            findings_data = load_json(args.findings)
+            result = run_adversarial_reviews(findings_data, args.providers)
+            _write_json(result, args.output)
+            print("Adversarial AI review package written.", file=sys.stderr)
             return 0
 
         if args.command == "verify-ai-evidence":
