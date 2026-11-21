@@ -60,6 +60,7 @@ jobs:
           python3 -m sentinel_core test-candidate --help
           python3 -m sentinel_core compare-scans --help
           python3 -m sentinel_core review-patch-risk --help
+          python3 -m sentinel_core remediation-report --help
           python3 -m sentinel_core benchmark --dataset benchmarks/security-review-v1.json --results benchmarks/results-template.json --output /tmp/sentinel-benchmark.json
           python3 -c 'import json; r=json.load(open("/tmp/sentinel-benchmark.json")); s=r["summary"]; assert s["cases_total"] == 16; assert s["cases_scored"] == 16; assert s["precision"] is None; assert s["recall"] == 0.0; assert s["f1"] == 0.0'
 
