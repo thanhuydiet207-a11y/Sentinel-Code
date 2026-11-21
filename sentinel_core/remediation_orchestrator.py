@@ -104,7 +104,7 @@ def run_remediation_orchestration(
             restored = checkpoint_outputs(checkpoint_store, workflow_id, checkpoint_digest)
             if "orchestration" in restored:
                 return restored["orchestration"]
-            if existing.get("stages") != ["patch_validation", "patch_risk", "sandbox", "regression_scan", "provenance", "orchestration"]:
+            if existing.get("stages") != ["security_review", "patch_validation", "patch_risk", "sandbox", "regression_scan", "provenance", "orchestration"]:
                 raise ValueError("checkpoint workflow stage plan is incompatible; use a new workflow_id")
             if existing.get("status") != "running":
                 raise ValueError("checkpoint workflow is not resumable")
