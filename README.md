@@ -236,3 +236,12 @@ Compare normalized findings before and after a candidate patch:
     python3 -m sentinel_core compare-scans baseline.json candidate.json --output comparison.json
 
 The comparison reports fixed, new, persisting, duplicate findings and severity changes. A newly detected finding or severity increase makes the command return exit code 1 (regression). A clean comparison is not a security guarantee: verify scan completeness, scanner/configuration parity, and manually confirm proposed fixes. See [comparison limitations](docs/REGRESSION-SECURITY-RESCAN.md).
+
+
+## Phase 4D: Patch Risk Review
+
+Estimate advisory risk signals before accepting a proposed patch:
+
+    python3 -m sentinel_core review-patch-risk proposal.json --output risk.json
+
+Flags include sensitive paths, dependency/build changes, multi-file scope, large deletions/patches, suspicious constructs, and possible secret markers. This is heuristic triage only; it does not validate correctness or allow automatic patch application. See [Patch Risk Review](docs/PATCH-RISK-REVIEW.md).
