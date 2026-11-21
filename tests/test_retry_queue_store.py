@@ -45,7 +45,7 @@ class RetryQueueStoreTests(unittest.TestCase):
 
     def test_missing_job(self):
         self.assertEqual(self.store.get("missing")["action"], "not_found")
-        self.assertEqual(self.store.cancel("missing", "now")["action"], "not_found")
+        self.assertEqual(self.store.cancel("missing", "2026-01-01T00:00:30+00:00")["action"], "not_found")
 
     def test_invalid_enqueue_and_list(self):
         self.assertEqual(self.store.enqueue({})["action"], "blocked")
