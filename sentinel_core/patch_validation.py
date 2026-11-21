@@ -6,7 +6,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-_HUNK_RE = re.compile(r"^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@(?: .*)?$")
+_HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$")
 _MAX_PATCH_BYTES = 200_000
 
 
@@ -43,8 +43,7 @@ def _apply_unified_diff(original: str, patch: str) -> str:
     index = 2
     saw_hunk = False
     while index < len(lines):
-        header = lines[index]
-        match = _HUNK_RE.fullmatch(header)
+        match = _HUNK_RE.fullmatch(lines[index])
         if not match:
             raise PatchValidationError("unsupported unified diff structure")
         saw_hunk = True
@@ -88,9 +87,9 @@ def _apply_unified_diff(original: str, patch: str) -> str:
     if not saw_hunk:
         raise PatchValidationError("patch contains no hunks")
     output.extend(source[cursor:])
-    result = "\\n".join(output)
-    if original.endswith("\\n") or output:
-        result += "\\n"
+    result = "\n".join(output)
+    if original.endswith("\n") or output:
+        result += "\n"
     return result
 
 
@@ -125,8 +124,7 @@ def validate_patch_proposal(
     patch = proposal.get("patch")
     if not isinstance(patch, str):
         raise PatchValidationError("patch must be a string")
-    header_path = PurePosixPath(path)
-    expected_header = f"--- a/{header_path}\\n+++ b/{header_path}"
+    expected_header = f"--- a/{path}\n+++ b/{path}"
     if not patch.startswith(expected_header):
         raise PatchValidationError("patch headers must target the exact finding path")
     candidate = _apply_unified_diff(original, patch)
