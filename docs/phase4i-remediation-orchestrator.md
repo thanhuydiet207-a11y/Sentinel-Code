@@ -58,7 +58,11 @@ The input package is JSON with this shape:
     "require_evidence_verified": true,
     "require_sandbox_pass": true,
     "require_regression_clean": true,
-    "require_manual_approval": true
+    "require_manual_approval": true,
+    "require_ai_adjudication": true,
+    "min_adjudicator_reviewers": 2,
+    "max_cross_stage_disagreements": 0,
+    "min_adjudicator_confidence": 0.8
   }
 }
 ```
