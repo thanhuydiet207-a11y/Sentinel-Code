@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from sentinel_core.workflow_state import (
-    create_workflow, checkpoint_stage, load_workflow, resume_plan, verify_workflow,
+    create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow, resume_plan, verify_workflow,
 )
 
 _DIGEST = hashlib.sha256(b"input package").hexdigest()
@@ -21,6 +21,23 @@ class WorkflowStateTests(unittest.TestCase):
             self.assertEqual(plan["remaining_stages"], ["review", "sandbox"])
             self.assertEqual(plan["next_stage"], "review")
             self.assertTrue(plan["safe_to_resume"])
+
+    def test_completed_outputs_are_persisted_and_retrievable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "run-output", ["a", "b"], _DIGEST)
+            payload = {"result": [1, 2], "nested": {"ok": True}}
+            checkpoint_stage(tmp, "run-output", "a", "completed", payload)
+            self.assertEqual(checkpoint_outputs(tmp, "run-output", _DIGEST), {"a": payload})
+            state = load_workflow(tmp, "run-output")
+            self.assertEqual(state["checkpoints"][0]["output"], payload)
+
+    def test_output_digest_without_output_is_invalid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "run-output-tamper", ["a"], _DIGEST)
+            checkpoint_stage(tmp, "run-output-tamper", "a", "completed", {"ok": True})
+            state = load_workflow(tmp, "run-output-tamper")
+            state["checkpoints"][0]["output"] = None
+            self.assertFalse(verify_workflow(state)["valid"])
 
     def test_completion_requires_all_stages(self):
         with tempfile.TemporaryDirectory() as tmp:
