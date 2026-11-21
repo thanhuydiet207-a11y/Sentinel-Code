@@ -25,6 +25,7 @@ from .provenance import seal_evidence_bundle, verify_evidence_bundle
 from .audit_trail import build_audit_trail, verify_audit_trail, lifecycle_status
 from .policy_engine import evaluate_policy
 from .remediation_orchestrator import run_remediation_orchestration
+from .workflow_state import create_workflow, checkpoint_stage, load_workflow, resume_plan, verify_workflow
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -167,6 +168,27 @@ def build_parser() -> argparse.ArgumentParser:
     orchestrator_parser.add_argument("--root", default=".")
     orchestrator_parser.add_argument("--timeout", type=int, default=120)
     orchestrator_parser.add_argument("--output")
+
+    workflow_start = sub.add_parser("workflow-start", help="Create a persistent workflow checkpoint record")
+    workflow_start.add_argument("--store", required=True)
+    workflow_start.add_argument("--workflow-id", required=True)
+    workflow_start.add_argument("--stages", nargs="+", required=True)
+    workflow_start.add_argument("--input-digest", required=True)
+    workflow_start.add_argument("--metadata")
+    workflow_checkpoint = sub.add_parser("workflow-checkpoint", help="Record immutable stage completion/failure")
+    workflow_checkpoint.add_argument("--store", required=True)
+    workflow_checkpoint.add_argument("--workflow-id", required=True)
+    workflow_checkpoint.add_argument("--stage", required=True)
+    workflow_checkpoint.add_argument("--status", choices=("completed", "failed", "skipped"), required=True)
+    workflow_checkpoint.add_argument("--output")
+    workflow_checkpoint.add_argument("--error")
+    workflow_plan = sub.add_parser("workflow-resume-plan", help="Verify checkpoint chain and compute resume plan")
+    workflow_plan.add_argument("--store", required=True)
+    workflow_plan.add_argument("--workflow-id", required=True)
+    workflow_plan.add_argument("--input-digest")
+    workflow_verify = sub.add_parser("workflow-verify", help="Verify persisted workflow checkpoint integrity")
+    workflow_verify.add_argument("workflow")
+    workflow_verify.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -376,6 +398,29 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print("Remediation orchestration: " + result["status"], file=sys.stderr)
             return 0 if result["status"] == "ready_for_human_approval" else 1
+
+        if args.command == "workflow-start":
+            metadata = load_json(args.metadata) if args.metadata else None
+            result = create_workflow(args.store, args.workflow_id, args.stages, args.input_digest, metadata)
+            _write_json(result, None)
+            return 0
+
+        if args.command == "workflow-checkpoint":
+            output = load_json(args.output) if args.output else None
+            result = checkpoint_stage(args.store, args.workflow_id, args.stage, args.status, output, args.error)
+            _write_json(result, None)
+            return 0 if result["status"] != "failed" else 1
+
+        if args.command == "workflow-resume-plan":
+            result = resume_plan(args.store, args.workflow_id, args.input_digest)
+            _write_json(result, None)
+            return 0 if result.get("safe_to_resume") else 1
+
+        if args.command == "workflow-verify":
+            result = verify_workflow(load_json(args.workflow))
+            _write_json(result, args.output)
+            print("Workflow checkpoint integrity: " + ("verified" if result["valid"] else "invalid"), file=sys.stderr)
+            return 0 if result["valid"] else 1
 
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
