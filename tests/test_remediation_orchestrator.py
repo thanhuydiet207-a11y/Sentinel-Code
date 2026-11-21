@@ -197,8 +197,11 @@ class RemediationOrchestratorTests(unittest.TestCase):
             state = load_workflow(store, "stage-resume-test")
             self.assertTrue(verify_workflow(state)["valid"])
             outputs = checkpoint_outputs(store, "stage-resume-test")
+            self.assertIn("patch_validation", outputs)
             self.assertIn("patch_risk", outputs)
+            self.assertIn("sandbox", outputs)
             self.assertIn("regression_scan", outputs)
+            self.assertIn("provenance", outputs)
             self.assertIn("orchestration", outputs)
             self.assertEqual(state["status"], "completed")
 
