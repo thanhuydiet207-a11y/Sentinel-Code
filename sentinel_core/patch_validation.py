@@ -37,6 +37,8 @@ def _apply_unified_diff(original: str, patch: str) -> str:
         raise PatchValidationError("patch must contain unified diff file headers")
     if lines[0].startswith("--- /") or lines[1].startswith("+++ /"):
         raise PatchValidationError("absolute patch paths are not allowed")
+    if any(line.startswith(("--- ", "+++ ")) for line in lines[2:]):
+        raise PatchValidationError("unsupported unified diff: multiple file headers")
     source = original.splitlines()
     output: list[str] = []
     cursor = 0
