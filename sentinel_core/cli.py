@@ -12,6 +12,7 @@ from .scanner_adapters import SUPPORTED, import_scanner_results
 from .correlation import correlate_findings
 from .false_positive import analyze_findings
 from .ai_review import aggregate_reviews
+from .provider_adapters import run_provider_reviews
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -67,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
     triage_parser = sub.add_parser("triage", help="Flag findings with weak evidence for manual review")
     triage_parser.add_argument("input")
     triage_parser.add_argument("--output")
+
+    ai_parser = sub.add_parser("ai-review", help="Run opt-in provider API reviews; requires environment API keys")
+    ai_parser.add_argument("findings")
+    ai_parser.add_argument("--providers", nargs="+", choices=("openai", "anthropic", "gemini"), required=True)
+    ai_parser.add_argument("--output", required=True)
 
     consensus_parser = sub.add_parser("review-consensus", help="Aggregate offline AI reviewer outputs without suppressing findings")
     consensus_parser.add_argument("findings")
@@ -133,6 +139,13 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "triage":
             _write_json(analyze_findings(load_json(args.input)), args.output)
+            return 0
+
+        if args.command == "ai-review":
+            findings_data = load_json(args.findings)
+            reviews_data = run_provider_reviews(findings_data, args.providers)
+            _write_json(reviews_data, args.output)
+            print("AI provider review package written.", file=sys.stderr)
             return 0
 
         if args.command == "review-consensus":
