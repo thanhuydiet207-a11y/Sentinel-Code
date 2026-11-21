@@ -13,6 +13,7 @@ from .correlation import correlate_findings
 from .false_positive import analyze_findings
 from .ai_review import aggregate_reviews
 from .provider_adapters import run_provider_reviews
+from .evidence_verification import verify_ai_evidence
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -78,6 +79,12 @@ def build_parser() -> argparse.ArgumentParser:
     consensus_parser.add_argument("findings")
     consensus_parser.add_argument("reviews")
     consensus_parser.add_argument("--output")
+
+    verify_parser = sub.add_parser("verify-ai-evidence", help="Verify AI reviewer evidence references against local source")
+    verify_parser.add_argument("findings")
+    verify_parser.add_argument("reviews")
+    verify_parser.add_argument("--root", default=".")
+    verify_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -152,6 +159,12 @@ def main(argv: list[str] | None = None) -> int:
             findings_data = load_json(args.findings)
             reviews_data = load_json(args.reviews)
             _write_json(aggregate_reviews(findings_data, reviews_data), args.output)
+            return 0
+
+        if args.command == "verify-ai-evidence":
+            findings_data = load_json(args.findings)
+            reviews_data = load_json(args.reviews)
+            _write_json(verify_ai_evidence(findings_data, reviews_data, args.root), args.output)
             return 0
 
         if args.command == "import-scanner":
