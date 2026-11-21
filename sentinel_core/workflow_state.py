@@ -96,7 +96,7 @@ def checkpoint_stage(store: str | Path, workflow_id: str, stage: str, status: st
     event = {"sequence": state["event_count"], "workflow_id": workflow_id, "stage": stage,
              "status": status, "timestamp": _now(), "output": output,
              "output_digest": _hash(output) if output is not None else None,
-             "error": error, "previous_hash": state["head_hash"]
+             "error": error, "previous_hash": state["head_hash"]}
     event["event_hash"] = _hash({k:v for k,v in event.items() if k != "event_hash"})
     state["checkpoints"].append(event)
     state["event_count"] += 1
