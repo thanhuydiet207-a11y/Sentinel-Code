@@ -57,7 +57,7 @@ class PolicyEngineTests(unittest.TestCase):
         value = {
             "status": "complete", "reviewer_count": 2,
             "finding_count": 3, "adjudicated_finding_count": 3,
-            "cross_stage_disagreements": 0, "minimum_confidence": 0.85,
+            "cross_stage_finding_count": 3, "cross_stage_disagreements": 0, "minimum_confidence": 0.85,
         }
         value.update(overrides)
         return value
@@ -89,6 +89,7 @@ class PolicyEngineTests(unittest.TestCase):
         )
         self.assertEqual(result["decision"], "REVIEW")
         self.assertIn("adjudicator_confidence_below_policy", result["review_reasons"])
+        self.assertFalse(result["gates"]["ai_adjudication"])
 
     def test_cross_stage_disagreement_yields_review(self):
         result = evaluate_policy(
@@ -105,6 +106,15 @@ class PolicyEngineTests(unittest.TestCase):
         )
         self.assertEqual(result["decision"], "REVIEW")
         self.assertIn("minimum_adjudicator_reviewers_not_met", result["missing_evidence"])
+
+
+    def test_incomplete_cross_stage_coverage_yields_review(self):
+        result = evaluate_policy(
+            self.policy(require_ai_adjudication=True),
+            self.evidence(ai_adjudication=self.ai_evidence(cross_stage_finding_count=2)),
+        )
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertIn("cross_stage_finding_coverage_incomplete", result["missing_evidence"])
 
     def test_invalid_ai_confidence_threshold_rejected(self):
         with self.assertRaises(ValueError):
