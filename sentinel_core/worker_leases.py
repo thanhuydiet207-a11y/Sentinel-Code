@@ -46,11 +46,12 @@ class RetryWorkerLeaseStore:
             ).fetchall()
             claimed = []
             for job_id, payload in candidates:
-                self.connection.execute("UPDATE retry_jobs SET status='claimed' WHERE job_id=? AND status='queued'", (job_id,))
-                if self.connection.total_changes:
+                cursor = self.connection.execute("UPDATE retry_jobs SET status='claimed' WHERE job_id=? AND status='queued'", (job_id,))
+                if cursor.rowcount == 1:
                     self.connection.execute("INSERT OR REPLACE INTO retry_worker_leases(job_id, worker_id, lease_expires_at, lease_token) VALUES(?,?,?,?)", (job_id, worker_id, expiry, token))
                     job = json.loads(payload)
                     job["status"] = "claimed"
+                    self.connection.execute("UPDATE retry_jobs SET payload_json=? WHERE job_id=?", (json.dumps(job, sort_keys=True, separators=(",", ":"), ensure_ascii=False), job_id))
                     claimed.append({"job": job, "lease": {"worker_id": worker_id, "lease_expires_at": expiry, "lease_token": token}})
             self.connection.commit()
             return {"action": "claimed", "jobs": claimed}
@@ -88,7 +89,11 @@ class RetryWorkerLeaseStore:
                 self.connection.rollback()
                 return {"action": "blocked", "reason": "lease_expired"}
             self.connection.execute("DELETE FROM retry_worker_leases WHERE job_id=?", (job_id,))
-            self.connection.execute("UPDATE retry_jobs SET status='queued' WHERE job_id=? AND status='claimed'", (job_id,))
+            row_job = self.connection.execute("SELECT payload_json FROM retry_jobs WHERE job_id=?", (job_id,)).fetchone()
+            if row_job is not None:
+                job = json.loads(row_job[0])
+                job["status"] = "queued"
+                self.connection.execute("UPDATE retry_jobs SET status='queued', payload_json=? WHERE job_id=? AND status='claimed'", (json.dumps(job, sort_keys=True, separators=(",", ":"), ensure_ascii=False), job_id))
             self.connection.commit()
             return {"action": "released"}
         except sqlite3.Error:
@@ -109,7 +114,11 @@ class RetryWorkerLeaseStore:
             if expiry is None or expiry <= current:
                 self.connection.rollback()
                 return {"action": "blocked", "reason": "lease_expired"}
-            self.connection.execute("UPDATE retry_jobs SET status=? WHERE job_id=? AND status='claimed'", (outcome, job_id))
+            row_job = self.connection.execute("SELECT payload_json FROM retry_jobs WHERE job_id=?", (job_id,)).fetchone()
+            if row_job is not None:
+                job = json.loads(row_job[0])
+                job["status"] = outcome
+                self.connection.execute("UPDATE retry_jobs SET status=?, payload_json=? WHERE job_id=? AND status='claimed'", (outcome, json.dumps(job, sort_keys=True, separators=(",", ":"), ensure_ascii=False), job_id))
             self.connection.execute("DELETE FROM retry_worker_leases WHERE job_id=?", (job_id,))
             self.connection.commit()
             return {"action": "completed", "status": outcome}
