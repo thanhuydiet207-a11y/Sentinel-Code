@@ -22,12 +22,14 @@ from .security_pipeline import run_security_pipeline
 from .workflow_state import create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow
 
 
-def _repository_digest(root: Path) -> str:
+def _repository_digest(root: Path, excluded: Path | None = None) -> str:
     digest = hashlib.sha256()
     for current, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if d not in {".git", "__pycache__", ".pytest_cache", ".sentinel-workflows"})
         for name in sorted(files):
             path = Path(current) / name
+            if excluded is not None and path.resolve().is_relative_to(excluded):
+                continue
             relative = path.relative_to(root).as_posix()
             digest.update(relative.encode("utf-8"))
             try:
@@ -71,10 +73,11 @@ def run_remediation_orchestration(
         raise ValueError("policy must be an object")
 
     checkpoint_digest = None
+    restored: dict[str, Any] = {}
     if checkpoint_store is not None:
         if not isinstance(workflow_id, str) or not workflow_id:
             raise ValueError("workflow_id is required when checkpoint_store is supplied")
-        repository_digest = _repository_digest(root)
+        repository_digest = _repository_digest(root, Path(checkpoint_store).resolve())
         checkpoint_inputs = {
             "repository_digest": repository_digest,
             "findings_payload": findings_payload, "proposal": proposal,
