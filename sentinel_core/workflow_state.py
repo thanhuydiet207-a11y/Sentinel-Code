@@ -79,8 +79,8 @@ def load_workflow(store: str | Path, workflow_id: str) -> dict:
 def checkpoint_stage(store: str | Path, workflow_id: str, stage: str, status: str, output: Any = None, error: str | None = None) -> dict:
     workflow_id = _safe_id(workflow_id)
     state = load_workflow(store, workflow_id)
-    if state.get("status") not in {"running", "failed"}:
-        raise ValueError("workflow is not running")
+    if state.get("status") != "running":
+        raise ValueError("workflow is not running; failed workflows require retry_stage first")
     if stage not in state.get("stages", []):
         raise ValueError("stage is not declared")
     if status not in _ALLOWED:
