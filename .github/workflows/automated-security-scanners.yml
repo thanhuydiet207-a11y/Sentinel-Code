@@ -37,10 +37,15 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           sudo install /tmp/gitleaks /usr/local/bin/gitleaks
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241 # v0.68.2
-        with:
-          version: v0.68.2
-          cache: true
+        run: |
+          version="0.68.2"
+          archive="/tmp/trivy.tar.gz"
+          url="https://github.com/aquasecurity/trivy/releases/download/v${version}/trivy_${version}_Linux-64bit.tar.gz"
+          curl --retry 3 --retry-all-errors -fsSL "$url" -o "$archive"
+          tar -tzf "$archive" trivy >/dev/null
+          tar -xzf "$archive" -C /tmp trivy
+          sudo install /tmp/trivy /usr/local/bin/trivy
+          trivy --version
       - name: Run scanners and normalize findings
         run: bash scripts/run-security-scanners.sh "$RUNNER_TEMP/sentinel-results"
       - name: Upload scan report
