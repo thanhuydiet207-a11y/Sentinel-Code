@@ -10,9 +10,24 @@
   "license": "Apache-2.0",
   "homepage": "https://github.com/thanhuydiet207-a11y/Sentinel-Code",
   "repository": "https://github.com/thanhuydiet207-a11y/Sentinel-Code",
-  "keywords": ["devsecops", "security", "pr-review", "agent-skills", "claude-code", "cursor", "github-copilot", "codex", "gemini-cli"],
-  "skills": ["./skills"],
-  "agents": ["./agents/security-auditor.md"],
+  "keywords": [
+    "devsecops",
+    "security",
+    "pr-review",
+    "agent-skills",
+    "claude-code",
+    "cursor",
+    "github-copilot",
+    "codex",
+    "gemini-cli"
+  ],
+  "skills": [
+    "./skills"
+  ],
+  "agents": [
+    "./agents/security-auditor.md"
+  ],
   "hooks": "./hooks/hooks.json",
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./.mcp.json",
+  "icon": "./assets/icon.png"
 }
