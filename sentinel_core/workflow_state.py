@@ -119,6 +119,9 @@ def retry_stage(store: str | Path, workflow_id: str, stage: str) -> dict:
     """Append an audited retry marker after a failed stage; prior attempt remains immutable."""
     workflow_id = _safe_id(workflow_id)
     state = load_workflow(store, workflow_id)
+    integrity = verify_workflow(state)
+    if not integrity["valid"]:
+        raise ValueError("checkpoint integrity invalid: " + ", ".join(integrity["errors"]))
     if state.get("status") not in {"running", "failed"}:
         raise ValueError("workflow is not retryable")
     if stage not in state.get("stages", []):
