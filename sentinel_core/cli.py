@@ -369,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
                 scanner_names=package.get("scanner_names"),
                 reviewer_names=package.get("reviewer_names"),
                 sealed_evidence=package.get("sealed_evidence"),
+                scanner_inputs=package.get("scanner_inputs"),
+                ai_providers=package.get("ai_providers"),
                 timeout_seconds=args.timeout,
             )
             _write_json(result, args.output)
