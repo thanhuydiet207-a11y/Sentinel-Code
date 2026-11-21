@@ -104,7 +104,7 @@ def create_workflow(store: str | Path, workflow_id: str, stages: Any, input_dige
     state = {"schema_version": _SCHEMA, "workflow_id": workflow_id, "status": "running",
              "created_at": _now(), "updated_at": _now(), "input_digest": input_digest.lower(),
              "stages": stages, "checkpoints": [], "metadata": metadata or {},
-             "event_count": 0, "head_hash": "0"*64,
+             "event_count": 0, "head_hash": "0"*64, "migration_history": [],
              "limitations": ["Local filesystem checkpoints are not signed or immutable.",
              "Local writers are serialized with lock files; stale locks require manual inspection and removal.",
              "Before resuming, callers must revalidate external side effects and inputs."]}
@@ -255,6 +255,46 @@ def verify_workflow(state: Any) -> dict:
     if state.get("head_hash") != previous: errors.append("head_hash_mismatch")
     if not isinstance(state.get("input_digest"), str) or not re.fullmatch(r"[a-fA-F0-9]{64}", state.get("input_digest","")): errors.append("input_digest_invalid")
     return {"valid": not errors, "errors": errors, "event_count": len(checkpoints), "head_hash": previous}
+
+@_serialized_writer
+def migrate_workflow(store: str | Path, workflow_id: str) -> dict:
+    """Migrate schema 1 to 2, preserving a non-overwriting backup."""
+    workflow_id = _safe_id(workflow_id)
+    path = _path(store, workflow_id)
+    state = load_workflow(store, workflow_id)
+    structural = validate_workflow_schema(state)
+    if not structural["valid"]:
+        raise ValueError("schema validation failed: " + ", ".join(structural["errors"]))
+    if state.get("schema_version") == _SCHEMA:
+        return {"status": "already_current", "workflow": state, "backup": None}
+    integrity = verify_workflow(state)
+    if not integrity["valid"]:
+        raise ValueError("checkpoint integrity validation failed: " + ", ".join(integrity["errors"]))
+    backup = path.with_suffix(path.suffix + ".schema1.bak")
+    if backup.exists():
+        raise FileExistsError("migration backup already exists; refusing to overwrite")
+    fd, tmp = tempfile.mkstemp(prefix=".checkpoint-backup-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(state, stream, ensure_ascii=False, indent=2)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, backup)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    migrated = dict(state)
+    migrated["schema_version"] = _SCHEMA
+    migrated.setdefault("metadata", {})
+    migrated.setdefault("limitations", ["Local filesystem checkpoints are not signed or immutable.", "Before resuming, callers must revalidate external side effects and inputs."])
+    migrated["migration_history"] = list(migrated.get("migration_history", [])) + [{"from": 1, "to": 2, "migrated_at": _now(), "backup": backup.name}]
+    _write(path, migrated)
+    checked = verify_workflow(migrated)
+    if not checked["valid"]:
+        _write(path, state)
+        raise ValueError("migrated checkpoint failed validation: " + ", ".join(checked["errors"]))
+    return {"status": "migrated", "workflow": migrated, "backup": str(backup)}
 
 def resume_plan(store: str | Path, workflow_id: str, input_digest: str | None = None) -> dict:
     state = load_workflow(store, workflow_id)
