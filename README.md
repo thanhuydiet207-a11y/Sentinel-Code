@@ -227,3 +227,30 @@ Run explicit test/scanner commands against a candidate in a temporary workspace 
     python3 -m sentinel_core test-candidate proposal.json --root . --timeout 120 --output artifacts/candidate-tests.json
 
 Proposal JSON contains \`candidate_path\`, \`candidate_content\`, and \`commands\` (argv arrays). Commands are allowlisted, shell execution is disabled, and the runner stops on the first failure or timeout. This temporary workspace is **not OS-level isolation**; see [sandbox limitations](docs/REMEDIATION-TEST-SANDBOX.md). Do not run untrusted candidate code without a disposable container or VM.
+
+
+## Phase 4C: Regression & Security Rescan
+
+Compare normalized findings before and after a candidate patch:
+
+    python3 -m sentinel_core compare-scans baseline.json candidate.json --output comparison.json
+
+The comparison reports fixed, new, persisting, duplicate findings and severity changes. A newly detected finding or severity increase makes the command return exit code 1 (regression). A clean comparison is not a security guarantee: verify scan completeness, scanner/configuration parity, and manually confirm proposed fixes. See [comparison limitations](docs/REGRESSION-SECURITY-RESCAN.md).
+
+
+## Phase 4D: Patch Risk Review
+
+Estimate advisory risk signals before accepting a proposed patch:
+
+    python3 -m sentinel_core review-patch-risk proposal.json --output risk.json
+
+Flags include sensitive paths, dependency/build changes, multi-file scope, large deletions/patches, suspicious constructs, and possible secret markers. This is heuristic triage only; it does not validate correctness or allow automatic patch application. See [Patch Risk Review](docs/PATCH-RISK-REVIEW.md).
+
+
+## Phase 4E: Remediation Workflow Report
+
+Build a decision report from patch validation, patch risk, temporary test sandbox, and scan comparison artifacts:
+
+    python3 -m sentinel_core remediation-report evidence-bundle.json --output remediation-report.json
+
+The report checks the supplied evidence gates and reports blockers. A \`ready_for_manual_approval\` result still requires human approval; it does not apply patches or merge changes. It does not independently run the evidence-producing steps.
