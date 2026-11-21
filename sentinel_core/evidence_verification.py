@@ -10,7 +10,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-_REF_RE = re.compile(r"^(.+):(\\d+)(?:-(\\d+))?$")
+_REF_RE = re.compile(r"^(.+):(\[0-9]+)(?:-(\[0-9]+))?$")
 
 
 def _resolve(root: Path, relative: str) -> Path:
@@ -81,7 +81,7 @@ def verify_ai_evidence(findings_payload: dict[str, Any], reviews_payload: dict[s
                 if end > len(lines):
                     checks.append({"reference": ref, "valid": False, "reason": "line range exceeds source"})
                     continue
-                excerpt = "\\n".join(lines[start - 1:end])
+                excerpt = "\n".join(lines[start - 1:end])
                 digest = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
                 exact_location = path == expected_path and start == expected_start and end == expected_end
                 hash_matches = bool(declared_hash) and digest == declared_hash if exact_location else None
