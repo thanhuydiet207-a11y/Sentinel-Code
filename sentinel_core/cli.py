@@ -18,6 +18,7 @@ from .adversarial_review import run_adversarial_reviews
 from .security_pipeline import run_security_pipeline
 from .patch_validation import validate_patch_proposal
 from .remediation_sandbox import run_remediation_sandbox
+from .regression import compare_scan_snapshots
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -113,6 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
     sandbox_parser.add_argument("--root", default=".")
     sandbox_parser.add_argument("--timeout", type=int, default=120)
     sandbox_parser.add_argument("--output")
+
+    compare_parser = sub.add_parser("compare-scans", help="Compare baseline and candidate normalized scan findings for regressions")
+    compare_parser.add_argument("baseline")
+    compare_parser.add_argument("candidate")
+    compare_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -238,6 +244,14 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print("Candidate tests completed in a temporary workspace.", file=sys.stderr)
             return 0 if result["status"] == "pass" else 1
+
+        if args.command == "compare-scans":
+            baseline = load_json(args.baseline)
+            candidate = load_json(args.candidate)
+            result = compare_scan_snapshots(baseline, candidate)
+            _write_json(result, args.output)
+            print(f"Scan comparison: {result['status']}", file=sys.stderr)
+            return 1 if result["status"] == "regression" else 0
 
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
