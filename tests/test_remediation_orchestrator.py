@@ -105,6 +105,9 @@ class RemediationOrchestratorTests(unittest.TestCase):
             self.assertEqual(result["policy"]["decision"], "PASS")
             self.assertEqual(source.read_text(encoding="utf-8"), original)
             self.assertFalse(result["summary"]["repository_modified"])
+            self.assertTrue(result["audit_verification"]["valid"])
+            self.assertEqual(result["stages"]["audit_trail"]["status"], "verified")
+            self.assertEqual(result["remediation_report"]["decision"], "ready_for_human_approval")
             sandbox_runner.assert_called_once()
 
     @patch("sentinel_core.remediation_orchestrator.run_remediation_sandbox")
