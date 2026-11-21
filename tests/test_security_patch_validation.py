@@ -62,6 +62,16 @@ class PatchValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(PatchValidationError, "unsupported unified diff"):
             validate_patch_proposal(bad, self.findings, self.root)
 
+    def test_preserves_source_without_trailing_newline(self):
+        source = "def query(value):\n    return value"
+        (self.root / "app.py").write_text(source, encoding="utf-8")
+        proposal = {
+            **self.proposal,
+            "base_sha256": hashlib.sha256(source.encode()).hexdigest(),
+        }
+        result = validate_patch_proposal(proposal, self.findings, self.root)
+        self.assertEqual(result["candidate_content"], "def query(value):\n    return safe(value)")
+
 
 if __name__ == "__main__":
     unittest.main()
