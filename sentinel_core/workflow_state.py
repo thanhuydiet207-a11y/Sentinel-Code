@@ -94,7 +94,8 @@ def checkpoint_stage(store: str | Path, workflow_id: str, stage: str, status: st
     if status == "skipped" and output is not None:
         raise ValueError("skipped stage cannot have output")
     event = {"sequence": state["event_count"], "workflow_id": workflow_id, "stage": stage,
-             "status": status, "timestamp": _now(), "output_digest": _hash(output) if output is not None else None,
+             "status": status, "timestamp": _now(), "output": output,
+             "output_digest": _hash(output) if output is not None else None,
              "error": error, "previous_hash": state["head_hash"]}
     event["event_hash"] = _hash({k:v for k,v in event.items() if k != "event_hash"})
     state["checkpoints"].append(event)
@@ -130,6 +131,7 @@ def verify_workflow(state: Any) -> dict:
         actual = _hash({k:v for k,v in event.items() if k != "event_hash"})
         if event.get("event_hash") != actual: errors.append(f"checkpoint_{i}_hash_mismatch")
         if event.get("output") is not None and event.get("output_digest") != _hash(event.get("output")): errors.append(f"checkpoint_{i}_output_digest_mismatch")
+        if event.get("output") is None and event.get("output_digest") is not None: errors.append(f"checkpoint_{i}_output_digest_without_output")
         previous = event.get("event_hash")
     if state.get("event_count") != len(checkpoints): errors.append("event_count_mismatch")
     if state.get("head_hash") != previous: errors.append("head_hash_mismatch")
@@ -152,3 +154,14 @@ def resume_plan(store: str | Path, workflow_id: str, input_digest: str | None = 
             "remaining_stages": remaining, "next_stage": remaining[0] if remaining else None,
             "safe_to_resume": state["status"] in {"running", "failed"} and not failed,
             "limitations": state.get("limitations", [])}
+
+
+def checkpoint_outputs(store: str | Path, workflow_id: str, input_digest: str | None = None) -> dict:
+    """Return verified outputs for completed stages; refuse corrupted or mismatched state."""
+    state = load_workflow(store, workflow_id)
+    checked = verify_workflow(state)
+    if not checked["valid"]:
+        raise ValueError("checkpoint integrity invalid: " + ", ".join(checked["errors"]))
+    if input_digest is not None and input_digest.lower() != state.get("input_digest"):
+        raise ValueError("input digest mismatch")
+    return {event["stage"]: event["output"] for event in state["checkpoints"] if event.get("status") == "completed"}
