@@ -14,6 +14,7 @@ from .provenance import verify_evidence_bundle
 from .regression import compare_scan_snapshots
 from .remediation_report import build_remediation_report
 from .remediation_sandbox import run_remediation_sandbox
+from .security_pipeline import run_security_pipeline
 
 
 def run_remediation_orchestration(
@@ -27,6 +28,8 @@ def run_remediation_orchestration(
     scanner_names: Any = None,
     reviewer_names: Any = None,
     sealed_evidence: Any = None,
+    scanner_inputs: Any = None,
+    ai_providers: Any = None,
     timeout_seconds: int = 120,
 ) -> dict:
     """Run all locally executable remediation gates without modifying repository files.
@@ -43,9 +46,56 @@ def run_remediation_orchestration(
         raise ValueError("policy must be an object")
 
     stages: dict[str, dict] = {}
+    security_review = None
+    validation_findings = findings_payload
+    resolved_scanners = scanner_names if isinstance(scanner_names, list) else []
+    resolved_reviewers = reviewer_names if isinstance(reviewer_names, list) else []
+
+    if scanner_inputs is not None and ai_providers is None:
+        raise ValueError("scanner_inputs require ai_providers so the security pipeline can process them")
+    if ai_providers is not None:
+        if not isinstance(ai_providers, list) or not ai_providers:
+            raise ValueError("ai_providers must be a non-empty list when supplied")
+        try:
+            security_review = run_security_pipeline(
+                findings_payload, root, ai_providers, scanner_inputs=scanner_inputs or []
+            )
+            validation_findings = security_review["findings"]
+            resolved_scanners = [
+                item["scanner"] for item in security_review.get("scanner_imports", [])
+                if isinstance(item, dict) and isinstance(item.get("scanner"), str)
+            ]
+            adversarial = security_review.get("adversarial_review", {})
+            stages_data = adversarial.get("stages", {}) if isinstance(adversarial, dict) else {}
+            adjudicator = stages_data.get("adjudicator", {}) if isinstance(stages_data, dict) else {}
+            adjudicator_reviewers = adjudicator.get("reviewers", []) if isinstance(adjudicator, dict) else []
+            resolved_reviewers = list(dict.fromkeys(
+                item["provider"] for item in adjudicator_reviewers
+                if isinstance(item, dict) and isinstance(item.get("provider"), str)
+            ))
+            evidence_stages = security_review.get("evidence_verification", {})
+            verified_refs = sum(
+                result.get("metadata", {}).get("verified_hash_references", 0)
+                for result in evidence_stages.values() if isinstance(result, dict)
+            ) if isinstance(evidence_stages, dict) else 0
+            stages["ai_evidence_verification"] = {
+                "status": "complete", "verified_hash_references": verified_refs,
+            }
+            stages["security_review"] = {
+                "status": "complete",
+                "provider_requests": security_review.get("summary", {}).get("adversarial_provider_requests"),
+                "scanner_packages": len(resolved_scanners),
+                "reviewers": resolved_reviewers,
+            }
+        except (OSError, ValueError, RuntimeError) as exc:
+            stages["security_review"] = {"status": "failed", "error": str(exc)}
+            resolved_scanners = []
+            resolved_reviewers = []
+    else:
+        stages["security_review"] = {"status": "not_run", "error": "ai_providers_not_supplied"}
 
     try:
-        validation = validate_patch_proposal(proposal, findings_payload, root)
+        validation = validate_patch_proposal(proposal, validation_findings, root)
         stages["patch_validation"] = {
             "status": "pass", "valid": True, "candidate_sha256": validation["candidate_sha256"],
             "path": validation["path"], "file_modified": False,
@@ -106,8 +156,8 @@ def run_remediation_orchestration(
         provenance_status = "not_run"
         stages["provenance"] = {"status": "not_run", "error": "sealed_evidence_not_supplied"}
 
-    scanners = scanner_names if isinstance(scanner_names, list) else []
-    reviewers = reviewer_names if isinstance(reviewer_names, list) else []
+    scanners = resolved_scanners
+    reviewers = resolved_reviewers
     policy_evidence = {
         "patch_validation": {"valid": validation is not None},
         "patch_risk": risk or {},
@@ -164,6 +214,7 @@ def run_remediation_orchestration(
     return {
         "schema_version": "1.0", "workflow": "sentinel-remediation-orchestrator-v1",
         "status": overall, "stages": stages, "policy": policy_result,
+        "security_review": security_review,
         "remediation_report": remediation_report,
         "audit_trail": audit_trail, "audit_verification": audit_verification,
         "summary": {
@@ -173,7 +224,7 @@ def run_remediation_orchestration(
             "automatic_merge_allowed": False, "human_approval_required": True,
         },
         "limitations": [
-            "Scanner snapshots and reviewer identities are supplied by the caller; no scanner executable or AI provider is launched.",
+            "Scanner JSON packages are supplied by the caller; scanner executables are not launched. AI provider calls occur only when ai_providers is explicitly supplied.",
             "The sandbox uses a temporary workspace and is not OS-level isolation.",
             "Provenance verifies supplied hashes but does not establish artifact authenticity or trusted timestamps.",
             "A passing policy is not authorization to apply or merge a patch.",
