@@ -16,6 +16,7 @@ from .provider_adapters import run_provider_reviews
 from .evidence_verification import verify_ai_evidence
 from .adversarial_review import run_adversarial_reviews
 from .security_pipeline import run_security_pipeline
+from .patch_validation import validate_patch_proposal
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -99,6 +100,12 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline_parser.add_argument("--scanner-input", action="append", default=[], metavar="SCANNER=PATH")
     pipeline_parser.add_argument("--providers", nargs="+", choices=("openai", "anthropic", "gemini"), required=True)
     pipeline_parser.add_argument("--output", required=True)
+
+    patch_parser = sub.add_parser("validate-patch", help="Validate an AI patch proposal against current source without applying it")
+    patch_parser.add_argument("proposal")
+    patch_parser.add_argument("findings")
+    patch_parser.add_argument("--root", default=".")
+    patch_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -203,6 +210,14 @@ def main(argv: list[str] | None = None) -> int:
             )
             _write_json(result, args.output)
             print("Security pipeline report written.", file=sys.stderr)
+            return 0
+
+        if args.command == "validate-patch":
+            proposal = load_json(args.proposal)
+            findings_data = load_json(args.findings)
+            result = validate_patch_proposal(proposal, findings_data, args.root)
+            _write_json(result, args.output)
+            print("Patch proposal validated; source file was not modified.", file=sys.stderr)
             return 0
 
         if args.command == "import-scanner":

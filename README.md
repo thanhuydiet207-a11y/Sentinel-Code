@@ -206,3 +206,15 @@ launch scanner executables. The AI stages make three sequential requests per sel
 provider and may incur provider charges. Invalid source evidence stops execution before
 AI requests. The pipeline is advisory and never suppresses findings automatically.
 See [Security Pipeline Orchestration](docs/SECURITY-PIPELINE-ORCHESTRATION.md).
+
+
+## Phase 4A: Safe Remediation Patch Validation
+
+Validate an AI-proposed unified diff against a finding and the current source without modifying files:
+
+\`\`\`bash
+python3 -m sentinel_core validate-patch proposal.json findings.json \\
+  --root . --output artifacts/patch-validation.json
+\`\`\`
+
+A proposal must identify the finding, exact repository-relative source path, current file SHA-256, and a single-file unified diff. Stale hashes, mismatched paths, traversal, invalid hunk context, and unsupported patches are rejected. The output contains candidate content and its hash; it is not applied automatically. See [Remediation Patch Validation](docs/REMEDIATION-PATCH-VALIDATION.md).
