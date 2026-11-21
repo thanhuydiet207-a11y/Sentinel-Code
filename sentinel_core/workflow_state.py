@@ -129,6 +129,7 @@ def verify_workflow(state: Any) -> dict:
         if event.get("previous_hash") != previous: errors.append(f"checkpoint_{i}_previous_hash_mismatch")
         actual = _hash({k:v for k,v in event.items() if k != "event_hash"})
         if event.get("event_hash") != actual: errors.append(f"checkpoint_{i}_hash_mismatch")
+        if event.get("output") is not None and event.get("output_digest") != _hash(event.get("output")): errors.append(f"checkpoint_{i}_output_digest_mismatch")
         previous = event.get("event_hash")
     if state.get("event_count") != len(checkpoints): errors.append("event_count_mismatch")
     if state.get("head_hash") != previous: errors.append("head_hash_mismatch")
