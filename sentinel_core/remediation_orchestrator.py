@@ -100,6 +100,7 @@ def run_remediation_orchestration(
                 "reviewer_count": len(adjudicator_reviewers),
                 "finding_count": finding_count,
                 "adjudicated_finding_count": len(consensus_items) if isinstance(consensus_items, list) else 0,
+                "cross_stage_finding_count": len(cross_stage) if isinstance(cross_stage, list) else 0,
                 "cross_stage_disagreements": disagreement_count,
                 "minimum_confidence": min(confidence_values) if confidence_values else None,
             }
