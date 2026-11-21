@@ -245,3 +245,12 @@ Estimate advisory risk signals before accepting a proposed patch:
     python3 -m sentinel_core review-patch-risk proposal.json --output risk.json
 
 Flags include sensitive paths, dependency/build changes, multi-file scope, large deletions/patches, suspicious constructs, and possible secret markers. This is heuristic triage only; it does not validate correctness or allow automatic patch application. See [Patch Risk Review](docs/PATCH-RISK-REVIEW.md).
+
+
+## Phase 4E: Remediation Workflow Report
+
+Build a decision report from patch validation, patch risk, temporary test sandbox, and scan comparison artifacts:
+
+    python3 -m sentinel_core remediation-report evidence-bundle.json --output remediation-report.json
+
+The report checks the supplied evidence gates and reports blockers. A \`ready_for_manual_approval\` result still requires human approval; it does not apply patches or merge changes. It does not independently run the evidence-producing steps.
