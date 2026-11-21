@@ -275,3 +275,17 @@ Create and verify a hash-chained event trail and check lifecycle prerequisites:
     python3 -m sentinel_core audit-lifecycle events.json --output lifecycle.json
 
 Hash chaining detects edits/reordering, but does not establish authenticity, trusted timestamps, immutable storage, or access control. Events are caller-supplied; the audit CLI does not execute remediation.
+
+
+## Phase 4I–4J: Remediation orchestration and AI adjudication gates
+
+The remediation orchestrator joins patch validation, advisory risk scoring, temporary-workspace tests, baseline/candidate scan comparison, evidence provenance verification, audit-trail creation, and declarative policy evaluation:
+
+```bash
+python3 -m sentinel_core remediation-orchestrate remediation-package.json \
+  --root . --timeout 120 --output artifacts/remediation-result.json
+```
+
+AI calls remain opt-in: include `ai_providers` in the input package to run the existing independent, challenger, and adjudicator stages. Phase 4J policy options can require adjudicator reviewer count, complete finding coverage, minimum confidence, and a maximum number of cross-stage disagreements. Missing or disputed AI evidence yields manual review; AI agreement is not proof of correctness. No patch is automatically applied or merged, and human approval remains mandatory.
+
+See [Phase 4I remediation orchestration](docs/phase4i-remediation-orchestrator.md) and [Phase 4J AI adjudication policy gates](docs/phase4j-ai-adjudication-gates.md).

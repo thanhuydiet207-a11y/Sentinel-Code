@@ -52,5 +52,77 @@ class PolicyEngineTests(unittest.TestCase):
         result = evaluate_policy(self.policy(), self.evidence(reviewers=[]))
         self.assertEqual(result["decision"], "REVIEW")
 
+
+    def ai_evidence(self, **overrides):
+        value = {
+            "status": "complete", "reviewer_count": 2,
+            "finding_count": 3, "adjudicated_finding_count": 3,
+            "cross_stage_finding_count": 3, "cross_stage_disagreements": 0, "minimum_confidence": 0.85,
+        }
+        value.update(overrides)
+        return value
+
+    def test_ai_adjudication_passes_when_complete_and_confident(self):
+        policy = self.policy(require_ai_adjudication=True, min_adjudicator_reviewers=2,
+                             max_cross_stage_disagreements=0, min_adjudicator_confidence=0.8)
+        result = evaluate_policy(policy, self.evidence(ai_adjudication=self.ai_evidence()))
+        self.assertEqual(result["decision"], "PASS")
+        self.assertTrue(result["gates"]["ai_adjudication"])
+
+    def test_required_ai_adjudication_missing_yields_review(self):
+        result = evaluate_policy(self.policy(require_ai_adjudication=True), self.evidence())
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertIn("ai_adjudication_not_completed", result["missing_evidence"])
+
+    def test_incomplete_adjudicator_coverage_yields_review(self):
+        result = evaluate_policy(
+            self.policy(require_ai_adjudication=True),
+            self.evidence(ai_adjudication=self.ai_evidence(adjudicated_finding_count=2)),
+        )
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertIn("adjudicator_finding_coverage_incomplete", result["missing_evidence"])
+
+    def test_low_adjudicator_confidence_yields_review(self):
+        result = evaluate_policy(
+            self.policy(require_ai_adjudication=True, min_adjudicator_confidence=0.8),
+            self.evidence(ai_adjudication=self.ai_evidence(minimum_confidence=0.4)),
+        )
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertIn("adjudicator_confidence_below_policy", result["review_reasons"])
+        self.assertFalse(result["gates"]["ai_adjudication"])
+
+    def test_cross_stage_disagreement_yields_review(self):
+        result = evaluate_policy(
+            self.policy(require_ai_adjudication=True, max_cross_stage_disagreements=0),
+            self.evidence(ai_adjudication=self.ai_evidence(cross_stage_disagreements=1)),
+        )
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertIn("cross_stage_disagreement_limit_exceeded", result["review_reasons"])
+
+    def test_too_few_adjudicators_yields_review(self):
+        result = evaluate_policy(
+            self.policy(require_ai_adjudication=True, min_adjudicator_reviewers=2),
+            self.evidence(ai_adjudication=self.ai_evidence(reviewer_count=1)),
+        )
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertIn("minimum_adjudicator_reviewers_not_met", result["missing_evidence"])
+
+
+    def test_incomplete_cross_stage_coverage_yields_review(self):
+        result = evaluate_policy(
+            self.policy(require_ai_adjudication=True),
+            self.evidence(ai_adjudication=self.ai_evidence(cross_stage_finding_count=2)),
+        )
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertIn("cross_stage_finding_coverage_incomplete", result["missing_evidence"])
+
+    def test_invalid_ai_confidence_threshold_rejected(self):
+        with self.assertRaises(ValueError):
+            evaluate_policy(self.policy(min_adjudicator_confidence=1.1), self.evidence())
+
+    def test_invalid_ai_review_limits_rejected(self):
+        with self.assertRaises(ValueError):
+            evaluate_policy(self.policy(max_cross_stage_disagreements=-1), self.evidence())
+
 if __name__ == "__main__":
     unittest.main()

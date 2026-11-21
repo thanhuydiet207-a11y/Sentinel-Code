@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import math
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -51,6 +52,7 @@ def run_remediation_orchestration(
     validation_findings = findings_payload
     resolved_scanners = scanner_names if isinstance(scanner_names, list) else []
     resolved_reviewers = reviewer_names if isinstance(reviewer_names, list) else []
+    ai_adjudication_evidence: dict[str, Any] = {"status": "not_run"}
 
     if scanner_inputs is not None and ai_providers is None:
         raise ValueError("scanner_inputs require ai_providers so the security pipeline can process them")
@@ -74,6 +76,42 @@ def run_remediation_orchestration(
                 item["provider"] for item in adjudicator_reviewers
                 if isinstance(item, dict) and isinstance(item.get("provider"), str)
             ))
+            stage_consensus = adversarial.get("stage_consensus", {}) if isinstance(adversarial, dict) else {}
+            adjudicator_consensus = stage_consensus.get("adjudicator", {}) if isinstance(stage_consensus, dict) else {}
+            consensus_items = adjudicator_consensus.get("consensus", []) if isinstance(adjudicator_consensus, dict) else []
+            cross_stage = adversarial.get("cross_stage_analysis", []) if isinstance(adversarial, dict) else []
+            confidence_values = [
+                vote.get("confidence")
+                for reviewer in adjudicator_reviewers if isinstance(reviewer, dict)
+                for vote in reviewer.get("reviews", []) if isinstance(reviewer.get("reviews"), list)
+                if isinstance(vote, dict)
+                and isinstance(vote.get("confidence"), (int, float))
+                and not isinstance(vote.get("confidence"), bool)
+                and math.isfinite(vote.get("confidence"))
+                and 0 <= vote.get("confidence") <= 1
+            ]
+            finding_count = len(security_review.get("findings", {}).get("findings", [])) if isinstance(security_review.get("findings"), dict) else 0
+            disagreement_count = sum(
+                1 for item in cross_stage
+                if isinstance(item, dict) and item.get("cross_stage_disagreement") is True
+            ) if isinstance(cross_stage, list) else 0
+            ai_adjudication_evidence = {
+                "status": "complete",
+                "reviewer_count": len(adjudicator_reviewers),
+                "finding_count": finding_count,
+                "adjudicated_finding_count": len(consensus_items) if isinstance(consensus_items, list) else 0,
+                "cross_stage_finding_count": len(cross_stage) if isinstance(cross_stage, list) else 0,
+                "cross_stage_disagreements": disagreement_count,
+                "minimum_confidence": min(confidence_values) if confidence_values else None,
+            }
+            stages["ai_adjudication"] = {
+                "status": "complete" if ai_adjudication_evidence["adjudicated_finding_count"] == finding_count else "incomplete",
+                "reviewer_count": ai_adjudication_evidence["reviewer_count"],
+                "adjudicated_finding_count": ai_adjudication_evidence["adjudicated_finding_count"],
+                "finding_count": finding_count,
+                "cross_stage_disagreements": disagreement_count,
+                "minimum_confidence": ai_adjudication_evidence["minimum_confidence"],
+            }
             evidence_stages = security_review.get("evidence_verification", {})
             verified_refs = sum(
                 result.get("metadata", {}).get("verified_hash_references", 0)
@@ -90,10 +128,13 @@ def run_remediation_orchestration(
             }
         except (OSError, TypeError, ValueError, RuntimeError) as exc:
             stages["security_review"] = {"status": "failed", "error": str(exc)}
+            stages["ai_adjudication"] = {"status": "not_run", "error": "security_review_failed"}
+            ai_adjudication_evidence = {"status": "failed"}
             resolved_scanners = []
             resolved_reviewers = []
     else:
         stages["security_review"] = {"status": "not_run", "error": "ai_providers_not_supplied"}
+        stages["ai_adjudication"] = {"status": "not_run", "error": "ai_providers_not_supplied"}
 
     try:
         validation = validate_patch_proposal(proposal, validation_findings, root)
@@ -168,11 +209,13 @@ def run_remediation_orchestration(
         "evidence_verified": provenance.get("valid") is True,
         "scanners": scanners,
         "reviewers": reviewers,
+        "ai_adjudication": ai_adjudication_evidence,
     }
     policy_result = evaluate_policy(policy, policy_evidence)
     stages["policy"] = {"status": policy_result["decision"].lower(),
                         "blockers": policy_result["blockers"],
-                        "missing_evidence": policy_result["missing_evidence"]}
+                        "missing_evidence": policy_result["missing_evidence"],
+                        "review_reasons": policy_result["review_reasons"]}
 
     report_bundle = {
         "patch_validation": {"valid": validation is not None, "issues": [] if validation else [stages["patch_validation"].get("error", "validation_failed")]},

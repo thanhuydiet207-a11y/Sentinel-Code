@@ -156,9 +156,19 @@ class RemediationOrchestratorTests(unittest.TestCase):
                 "adversarial_review": {
                     "stages": {
                         "adjudicator": {
-                            "reviewers": [{"provider": "openai"}]
+                            "reviewers": [{"provider": "openai", "reviews": [{
+                                "finding_id": "F-1", "verdict": "likely",
+                                "confidence": 0.95, "rationale": "Supported by source evidence.",
+                                "evidence_refs": ["sample.py:1"],
+                            }]}]
                         }
-                    }
+                    },
+                    "stage_consensus": {
+                        "adjudicator": {"consensus": [{"finding_id": "F-1"}]}
+                    },
+                    "cross_stage_analysis": [
+                        {"finding_id": "F-1", "cross_stage_disagreement": False}
+                    ],
                 },
                 "evidence_verification": {
                     "adjudicator": {"metadata": {"verified_hash_references": 1}}
@@ -167,7 +177,8 @@ class RemediationOrchestratorTests(unittest.TestCase):
             policy = {
                 "policy_id": "ai-enabled", "max_risk_score": 100,
                 "required_scanners": ["semgrep"], "required_reviewers": ["openai"],
-                "min_reviewers": 1, "require_evidence_verified": False,
+                "min_reviewers": 1, "require_evidence_verified": False, "require_ai_adjudication": True,
+                "min_adjudicator_reviewers": 1, "min_adjudicator_confidence": 0.8,
             }
             result = run_remediation_orchestration(
                 findings, proposal, root, baseline_scan={"findings": []},
@@ -178,6 +189,9 @@ class RemediationOrchestratorTests(unittest.TestCase):
             self.assertEqual(result["policy"]["decision"], "PASS")
             self.assertEqual(result["stages"]["security_review"]["provider_requests"], 3)
             self.assertEqual(result["stages"]["ai_evidence_verification"]["verified_hash_references"], 1)
+            self.assertEqual(result["stages"]["ai_adjudication"]["minimum_confidence"], 0.95)
+            self.assertEqual(result["stages"]["ai_adjudication"]["status"], "complete")
+            self.assertEqual(result["policy"]["decision"], "PASS")
             security_runner.assert_called_once()
 
 

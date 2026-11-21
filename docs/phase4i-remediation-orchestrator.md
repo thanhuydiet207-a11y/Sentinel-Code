@@ -58,7 +58,11 @@ The input package is JSON with this shape:
     "require_evidence_verified": true,
     "require_sandbox_pass": true,
     "require_regression_clean": true,
-    "require_manual_approval": true
+    "require_manual_approval": true,
+    "require_ai_adjudication": true,
+    "min_adjudicator_reviewers": 2,
+    "max_cross_stage_disagreements": 0,
+    "min_adjudicator_confidence": 0.8
   }
 }
 ```
@@ -79,3 +83,8 @@ The `findings_payload` must satisfy the full schema accepted by `sentinel-securi
 - `ready_for_human_approval`: all configured gates passed, still requires a human decision.
 - `needs_review`: one or more required evidence inputs or stages are missing/not run.
 - `blocked`: a required operation ran and failed, patch validation failed, regression was detected, risk exceeded policy, or evidence integrity failed.
+
+
+## Related policy hardening
+
+Phase 4J adds optional AI adjudicator coverage, minimum reviewer count, confidence, and cross-stage disagreement gates. See [AI Adjudication Policy Gates](phase4j-ai-adjudication-gates.md).
