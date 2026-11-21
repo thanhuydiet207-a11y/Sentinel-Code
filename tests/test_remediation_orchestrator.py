@@ -191,6 +191,7 @@ class RemediationOrchestratorTests(unittest.TestCase):
             self.assertEqual(result["stages"]["ai_evidence_verification"]["verified_hash_references"], 1)
             self.assertEqual(result["stages"]["ai_adjudication"]["minimum_confidence"], 0.95)
             self.assertEqual(result["stages"]["ai_adjudication"]["status"], "complete")
+            self.assertEqual(result["policy"]["decision"], "PASS")
             security_runner.assert_called_once()
 
 
