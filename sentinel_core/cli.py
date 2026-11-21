@@ -115,7 +115,8 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "correlate":
             payloads = [load_json(path) for path in args.inputs]
-            _write_json(correlate_findings(payloads), args.output)\n            return 0
+            _write_json(correlate_findings(payloads), args.output)
+            return 0
 
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
