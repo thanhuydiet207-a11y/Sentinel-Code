@@ -1,11 +1,14 @@
 """Orchestrate remediation validation, sandbox, regression, provenance, and policy gates."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from .patch_risk import review_patch_risk
 from .patch_validation import validate_patch_proposal
+from .audit_trail import build_audit_trail, verify_audit_trail
 from .policy_engine import evaluate_policy
 from .provenance import verify_evidence_bundle
 from .regression import compare_scan_snapshots
@@ -130,10 +133,39 @@ def run_remediation_orchestration(
 
     overall = {"PASS": "ready_for_human_approval", "BLOCK": "blocked",
                "REVIEW": "needs_review"}[policy_result["decision"]]
+    remediation_report["evidence_gate_decision"] = remediation_report["decision"]
+    remediation_report["decision"] = overall
+    remediation_report["policy_decision"] = policy_result["decision"]
+
+    event_types = [
+        ("created", {"workflow": "sentinel-remediation-orchestrator-v1"}),
+        ("finding_selected", {"finding_id": proposal.get("finding_id")}),
+        ("patch_proposed", {"path": proposal.get("path")}),
+        ("patch_validated", {"valid": validation is not None}),
+        ("risk_assessed", {"risk_score": risk.get("risk_score") if risk else None}),
+        ("sandbox_completed", {"status": sandbox.get("status")}),
+        ("scan_completed", {"status": scan.get("status")}),
+        ("evidence_verified", {"status": provenance_status}),
+        ("report_generated", {"policy_decision": policy_result["decision"], "status": overall}),
+    ]
+    audit_start = datetime.now(timezone.utc)
+    audit_events = [
+        {"type": event_type,
+         "timestamp": (audit_start + timedelta(microseconds=index)).isoformat().replace("+00:00", "Z"),
+         "payload": payload}
+        for index, (event_type, payload) in enumerate(event_types)
+    ]
+    audit_trail = build_audit_trail("remediation-" + uuid4().hex, audit_events)
+    audit_verification = verify_audit_trail(audit_trail)
+    stages["audit_trail"] = {
+        "status": "verified" if audit_verification["valid"] else "invalid",
+        "event_count": audit_verification["event_count"],
+    }
     return {
         "schema_version": "1.0", "workflow": "sentinel-remediation-orchestrator-v1",
         "status": overall, "stages": stages, "policy": policy_result,
         "remediation_report": remediation_report,
+        "audit_trail": audit_trail, "audit_verification": audit_verification,
         "summary": {
             "completed_stages": sum(1 for item in stages.values() if item["status"] in ("pass", "complete", "clean", "verified")),
             "stage_count": len(stages), "patch_candidate_created": validation is not None,
