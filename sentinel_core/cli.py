@@ -8,6 +8,7 @@ from typing import Any
 
 from .benchmark import evaluate_benchmark
 from .core import deduplicate_findings, line_hash_for_file, load_json, render_markdown_report, validate_payload
+from .scanner_adapters import SUPPORTED, import_scanner_results
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -55,6 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument("--dataset", required=True)
     bench_parser.add_argument("--results", required=True)
     bench_parser.add_argument("--output")
+
+    import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
+    import_parser.add_argument("scanner", choices=SUPPORTED)
+    import_parser.add_argument("input")
+    import_parser.add_argument("--root", default=".")
+    import_parser.add_argument("--output")
     return parser
 
 
@@ -101,6 +108,13 @@ def main(argv: list[str] | None = None) -> int:
             dataset = load_json(args.dataset)
             results = load_json(args.results)
             _write_json(evaluate_benchmark(dataset, results), args.output)
+            return 0
+
+        if args.command == "import-scanner":
+            scanner_data = load_json(args.input)
+            payload = import_scanner_results(args.scanner, scanner_data, args.root)
+            _write_json(payload, args.output)
+            print("Scanner import summary written.", file=sys.stderr)
             return 0
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
