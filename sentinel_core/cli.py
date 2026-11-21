@@ -23,6 +23,7 @@ from .patch_risk import review_patch_risk
 from .remediation_report import build_remediation_report
 from .provenance import seal_evidence_bundle, verify_evidence_bundle
 from .audit_trail import build_audit_trail, verify_audit_trail, lifecycle_status
+from .policy_engine import evaluate_policy
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -154,6 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument("baseline")
     compare_parser.add_argument("candidate")
     compare_parser.add_argument("--output")
+
+    policy_parser = sub.add_parser("evaluate-policy", help="Evaluate declarative remediation gates from supplied evidence")
+    policy_parser.add_argument("policy")
+    policy_parser.add_argument("evidence")
+    policy_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -336,6 +342,12 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print(f"Scan comparison: {result['status']}", file=sys.stderr)
             return 1 if result["status"] == "regression" else 0
+
+        if args.command == "evaluate-policy":
+            result = evaluate_policy(load_json(args.policy), load_json(args.evidence))
+            _write_json(result, args.output)
+            print("Policy decision: " + result["decision"], file=sys.stderr)
+            return 0 if result["decision"] == "PASS" else 1
 
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
