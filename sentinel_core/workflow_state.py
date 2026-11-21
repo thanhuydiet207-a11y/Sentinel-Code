@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 from contextlib import contextmanager
 
-_SCHEMA = 1
+_SCHEMA = 2
+_SUPPORTED_SCHEMAS = {1, 2}
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _ALLOWED = {"completed", "failed", "skipped", "retry"}
 
@@ -186,10 +187,44 @@ def retry_stage(store: str | Path, workflow_id: str, stage: str) -> dict:
     _write(_path(store, workflow_id), state)
     return state
 
+def validate_workflow_schema(state: Any) -> dict:
+    """Validate structural shape without verifying the checkpoint hash chain."""
+    errors = []
+    if not isinstance(state, dict):
+        return {"valid": False, "errors": ["workflow_not_object"]}
+    version = state.get("schema_version")
+    if version not in _SUPPORTED_SCHEMAS:
+        return {"valid": False, "errors": ["unsupported_workflow_schema"]}
+    required = ("workflow_id", "status", "created_at", "updated_at", "input_digest", "stages", "checkpoints", "event_count", "head_hash")
+    for key in required:
+        if key not in state:
+            errors.append(f"missing_{key}")
+    if not isinstance(state.get("workflow_id"), str) or not _ID.fullmatch(state.get("workflow_id", "")):
+        errors.append("workflow_id_invalid")
+    if state.get("status") not in {"running", "failed", "completed"}:
+        errors.append("workflow_status_invalid")
+    stages = state.get("stages")
+    if not isinstance(stages, list) or not stages or any(not isinstance(x, str) or not x.strip() for x in stages):
+        errors.append("stages_invalid")
+    if not isinstance(state.get("checkpoints"), list):
+        errors.append("checkpoints_not_list")
+    if not isinstance(state.get("event_count"), int) or isinstance(state.get("event_count"), bool):
+        errors.append("event_count_invalid")
+    if not isinstance(state.get("head_hash"), str) or not re.fullmatch(r"[a-fA-F0-9]{64}", state.get("head_hash", "")):
+        errors.append("head_hash_invalid")
+    if not isinstance(state.get("input_digest"), str) or not re.fullmatch(r"[a-fA-F0-9]{64}", state.get("input_digest", "")):
+        errors.append("input_digest_invalid")
+    if version == 2:
+        if not isinstance(state.get("metadata"), dict): errors.append("metadata_invalid")
+        if not isinstance(state.get("limitations"), list): errors.append("limitations_invalid")
+        if not isinstance(state.get("migration_history"), list): errors.append("migration_history_invalid")
+    return {"valid": not errors, "errors": errors, "schema_version": version}
+
 def verify_workflow(state: Any) -> dict:
     errors = []
-    if not isinstance(state, dict) or state.get("schema_version") != _SCHEMA:
-        return {"valid": False, "errors": ["unsupported_workflow_schema"]}
+    schema = validate_workflow_schema(state)
+    if not schema["valid"]:
+        return {"valid": False, "errors": schema["errors"]}
     checkpoints = state.get("checkpoints")
     if not isinstance(checkpoints, list):
         return {"valid": False, "errors": ["checkpoints_not_list"]}
