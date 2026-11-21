@@ -139,6 +139,41 @@ class RemediationOrchestratorTests(unittest.TestCase):
             sandbox_runner.assert_not_called()
 
 
+    @patch("sentinel_core.remediation_orchestrator.run_remediation_sandbox")
+    def test_checkpointed_completed_result_is_reused(self, sandbox_runner):
+        sandbox_runner.return_value = {
+            "status": "pass", "commands": [{"status": "pass"}],
+            "original_repository_modified": False, "os_level_isolation": False,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, findings, proposal = self._fixture(root)
+            store = root / "checkpoints"
+            args = dict(
+                baseline_scan={"findings": []}, candidate_scan={"findings": []},
+                sandbox_commands=[["python", "--version"]],
+                policy={"policy_id": "test", "max_risk_score": 100,
+                       "require_evidence_verified": False, "required_scanners": [],
+                       "required_reviewers": []},
+                checkpoint_store=store, workflow_id="resume-1",
+            )
+            first = run_remediation_orchestration(findings, proposal, root, **args)
+            second = run_remediation_orchestration(findings, proposal, root, **args)
+            self.assertEqual(first, second)
+            sandbox_runner.assert_called_once()
+
+    def test_checkpointed_run_rejects_changed_inputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, findings, proposal = self._fixture(root)
+            args = dict(checkpoint_store=root / "checkpoints", workflow_id="resume-mismatch",
+                        policy={"policy_id": "test", "require_evidence_verified": False})
+            run_remediation_orchestration(findings, proposal, root, **args)
+            changed = dict(proposal)
+            changed["finding_id"] = "F-2"
+            with self.assertRaisesRegex(ValueError, "input digest mismatch"):
+                run_remediation_orchestration(findings, changed, root, **args)
+
     @patch("sentinel_core.remediation_orchestrator.run_security_pipeline")
     @patch("sentinel_core.remediation_orchestrator.run_remediation_sandbox")
     def test_opt_in_ai_pipeline_supplies_actual_scanner_and_reviewer_evidence(self, sandbox_runner, security_runner):
