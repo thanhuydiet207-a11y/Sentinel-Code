@@ -40,6 +40,8 @@ jobs:
           bash tests/install-agent-skills.test.sh
       - name: Validate portable Agent Skill
         run: python3 tests/validate-agent-skills.py
+      - name: Validate Agent Plugins and Codex manifests
+        run: python3 tests/validate-plugin-manifests.py
       - name: Validate security eval suite structure
         run: python3 tests/validate-eval-suite.py
 

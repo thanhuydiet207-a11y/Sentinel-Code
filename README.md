@@ -86,7 +86,7 @@ Use `--scope user` for a personal installation in your home directory. Run `gh s
 
 ### ChatGPT and Codex plugin package
 
-The repository includes a portable root `plugin.json` plus a Codex compatibility manifest at `.codex-plugin/plugin.json`. This packages the Skill for OpenAI's Agent Plugins/Codex plugin format. Local plugin marketplace installation or public publication is a separate step and may require additional interface, privacy, support, and review metadata. The Claude `.mcp.json` remains a Claude-specific MCP configuration and is not bundled as a portable OpenAI MCP manifest.
+The repository includes a schema-declared root `plugin.json` for the portable Agent Plugins format and a Codex compatibility manifest at `.codex-plugin/plugin.json`. The root manifest points OpenAI setup to the packaged review Skill through `extensions.com.openai.onboardingSkill`; the `skills/` directory is discovered by the portable package format. The Claude `.mcp.json` remains Claude-specific and is not copied into the OpenAI package because its transport and authentication settings have not been revalidated for portable MCP use. The package has not been submitted to or published in a public plugin directory; publication requires separate listing, privacy, support, and review metadata.
 
 ## Optional MCP servers
 
