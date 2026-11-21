@@ -46,14 +46,17 @@ def _normalize_path(root: Path, value: str) -> str:
 
 
 def _severity(record: dict[str, Any], scanner: str) -> str:
-    extra = record.get("extra") if isinstance(record.get("extra"), dict) else {}\n    raw = record.get("severity") or record.get("Severity") or record.get("level") or extra.get("severity") or "medium"
+    extra = record.get("extra") if isinstance(record.get("extra"), dict) else {}
+    raw = record.get("severity") or record.get("Severity") or record.get("level") or extra.get("severity") or "medium"
     if scanner == "gitleaks":
         return "high"
     return SEVERITY_MAP.get(str(raw).lower(), "medium")
 
 
 def _category(record: dict[str, Any], scanner: str) -> str:
-    extra = record.get("extra") if isinstance(record.get("extra"), dict) else {}\n    metadata = extra.get("metadata") if isinstance(extra.get("metadata"), dict) else {}\n    cwe = record.get("cwe") or record.get("CWE") or record.get("CweID") or metadata.get("cwe")
+    extra = record.get("extra") if isinstance(record.get("extra"), dict) else {}
+    metadata = extra.get("metadata") if isinstance(extra.get("metadata"), dict) else {}
+    cwe = record.get("cwe") or record.get("CWE") or record.get("CweID") or metadata.get("cwe")
     if isinstance(cwe, list):
         cwe = cwe[0] if cwe else None
     if isinstance(cwe, str):
@@ -103,7 +106,8 @@ def import_scanner_results(scanner: str, data: Any, repository_root: Path | str)
             skipped.append({"index": index, "reason": str(exc)})
             continue
         rule = str(record.get("check_id") or record.get("RuleID") or record.get("VulnerabilityID") or record.get("ID") or "scanner/unknown")
-        extra = record.get("extra") if isinstance(record.get("extra"), dict) else {}\n        message = str(record.get("message") or extra.get("message") or record.get("Description") or record.get("Title") or record.get("RuleDescription") or rule)
+        extra = record.get("extra") if isinstance(record.get("extra"), dict) else {}
+        message = str(record.get("message") or extra.get("message") or record.get("Description") or record.get("Title") or record.get("RuleDescription") or rule)
         stable = hashlib.sha256(f"{scanner}:{rule}:{path}:{start}:{end}".encode()).hexdigest()[:16]
         findings.append({
             "id": f"{scanner.upper()}-{stable}",
