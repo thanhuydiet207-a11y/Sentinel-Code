@@ -34,8 +34,9 @@ def run_remediation_orchestration(
 ) -> dict:
     """Run all locally executable remediation gates without modifying repository files.
 
-    Scanner snapshots, reviewer names, and sealed evidence are supplied inputs;
-    this function does not launch scanner binaries or AI provider requests.
+    Scanner JSON and baseline/candidate snapshots are supplied inputs; scanner
+    executables are never launched. AI provider requests run only when
+    ai_providers is explicitly supplied.
     """
     root = Path(repository_root).resolve(strict=True)
     if not root.is_dir():
@@ -87,7 +88,7 @@ def run_remediation_orchestration(
                 "scanner_packages": len(resolved_scanners),
                 "reviewers": resolved_reviewers,
             }
-        except (OSError, ValueError, RuntimeError) as exc:
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
             stages["security_review"] = {"status": "failed", "error": str(exc)}
             resolved_scanners = []
             resolved_reviewers = []
@@ -226,6 +227,8 @@ def run_remediation_orchestration(
         "limitations": [
             "Scanner JSON packages are supplied by the caller; scanner executables are not launched. AI provider calls occur only when ai_providers is explicitly supplied.",
             "The sandbox uses a temporary workspace and is not OS-level isolation.",
+            "AI reviewer evidence references are location/hash checks and do not prove reviewer conclusions.",
+            "Audit-trail timestamps are local-process timestamps, not trusted timestamps.",
             "Provenance verifies supplied hashes but does not establish artifact authenticity or trusted timestamps.",
             "A passing policy is not authorization to apply or merge a patch.",
         ],
