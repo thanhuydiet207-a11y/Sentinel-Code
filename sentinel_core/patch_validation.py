@@ -88,7 +88,7 @@ def _apply_unified_diff(original: str, patch: str) -> str:
         raise PatchValidationError("patch contains no hunks")
     output.extend(source[cursor:])
     result = "\n".join(output)
-    if original.endswith("\n") or output:
+    if original.endswith("\n"):
         result += "\n"
     return result
 
