@@ -1,22 +1,22 @@
 {
   "name": "internal-secops-marketplace",
   "owner": {
-    "name": "SecOps Engineering Team",
-    "url": "https://code.claude.com/docs/en/plugins/create-marketplace"
+    "name": "Sentinel-Code Maintainers",
+    "url": "https://github.com/thanhuydiet207-a11y"
   },
   "plugins": [
     {
       "name": "secops-review-kit",
-      "displayName": "SecOps PR & Security Auditor Kit",
+      "displayName": "Sentinel-Code Security Review Kit",
       "source": "./",
-      "version": "1.0.1",
-      "description": "Bộ công cụ rà soát bảo mật PR, Subagent kiểm toán độc lập và Hooks kiểm tra trước khi push.",
+      "version": "1.1.0",
+      "description": "Portable security-review Skill plus Claude Code subagent, lifecycle guards, and optional MCP integrations.",
       "author": {
-        "name": "SecOps Engineering Team",
-        "url": "https://code.claude.com/docs/en/plugins/marketplace-reference"
+        "name": "Sentinel-Code Maintainers",
+        "url": "https://github.com/thanhuydiet207-a11y"
       },
       "license": "Apache-2.0",
-      "tags": ["security", "code-review", "subagent", "hooks", "devsecops"],
+      "tags": ["security", "code-review", "agent-skills", "devsecops", "multi-agent"],
       "defaultEnabled": true,
       "strict": true
     }

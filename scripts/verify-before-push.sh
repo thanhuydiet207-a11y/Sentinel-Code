@@ -2,16 +2,17 @@
 set -euo pipefail
 
 INPUT_JSON="$(cat)"
-if ! command -v jq >/dev/null 2>&1; then
-  echo "[SecOps] BLOCK: jq is required to validate the PreToolUse payload." >&2
-  exit 2
-fi
 if ! command -v python3 >/dev/null 2>&1; then
-  echo "[SecOps] BLOCK: python3 is required to safely parse Bash command arguments." >&2
-  exit 2
+  # Fail closed only for commands that look like a Git push; unrelated Bash
+  # commands should not be blocked by a missing optional parser runtime.
+  if grep -Eiq '(^|[^[:alnum:]_])git[[:space:]]+push([^[:alnum:]_]|$)' <<< "$INPUT_JSON"; then
+    echo "[SecOps] BLOCK: Python 3 is required to inspect this possible Git push." >&2
+    exit 2
+  fi
+  exit 0
 fi
-if ! COMMAND_STR="$(printf '%s' "$INPUT_JSON" | jq -er '.tool_input.command | strings')"; then
-  echo "[SecOps] BLOCK: invalid or missing tool_input.command payload." >&2
+if ! COMMAND_STR="$(INPUT_JSON="$INPUT_JSON" python3 -c 'import json, os; print(json.loads(os.environ["INPUT_JSON"])["tool_input"]["command"])')"; then
+  echo "[SecOps] BLOCK: invalid or missing PreToolUse command payload." >&2
   exit 2
 fi
 
@@ -220,7 +221,7 @@ patterns = [
     re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
     re.compile(r"\bnpm_[A-Za-z0-9]{30,}\b"),
     re.compile(r"\bpypi-[A-Za-z0-9_-]{50,}\b"),
-    re.compile(r"\\bSG\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}\\b"),
+    re.compile(r"\bSG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bSK[0-9a-fA-F]{32}\b"),
     re.compile(r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s/:@]+:[^\s@]+@"),
     re.compile(r"(?i)\b(?:api[_-]?key|secret[_-]?key|client[_-]?secret|access[_-]?token)\s*[:=]\s*[\"\x27]?([A-Za-z0-9_./+=-]{24,})"),

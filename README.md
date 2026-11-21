@@ -1,83 +1,135 @@
-# SecOps PR & Security Auditor Kit (`secops-review-kit`)
+# Sentinel-Code — Multi-Agent DevSecOps Security Review
 
-Gói mở rộng ([Claude Code Plugin](https://code.claude.com/docs/en/plugins/overview)) chuẩn hóa quy trình rà soát bảo mật Pull Request, kiểm toán mã nguồn độc lập theo chuẩn [OWASP Top 10:2025](https://top10.owasp.org/2025/0x00_2025-Introduction/) và tự động chặn các thao tác đẩy mã không an toàn ngay trong [Claude Code](https://code.claude.com/docs/en/overview).
+Sentinel-Code is a security-review toolkit for AI coding agents. Its portable core is an Agent Skill for evidence-based, read-only pull-request and code-change reviews. The Claude Code package adds a Claude plugin, read-only security subagent, lifecycle integrations, optional MCP servers, and Git push safeguards. Portable plugin metadata is also included for the OpenAI/Codex plugin format.
 
-## 1. Các thành phần tích hợp trong Plugin
+**This toolkit assists a secure development process. It does not replace SAST/DAST, dependency scanning, secret-management controls, server-side branch protection, or human security review. No AI review or scanner can guarantee that all vulnerabilities are found.**
 
-Plugin được đóng gói theo chuẩn [Plugin Manifest Specification](https://code.claude.com/docs/en/plugins/manifest-reference) và bao gồm 4 nhóm thành phần phối hợp chặt chẽ:
+## Capabilities
 
-| Thành phần | Định danh / Đường dẫn trong Plugin | Chức năng chính | Tài liệu kỹ thuật |
-| :--- | :--- | :--- | :--- |
-| **Skill** | `/secops-review-kit:pr-security-review` (`skills/pr-security-review/SKILL.md`) | Tự động nạp `git status`, `git diff` và đối chiếu danh mục lỗ hổng theo cơ chế nạp ngữ cảnh lũy tiến (Progressive Disclosure). | [Claude Code Skills](https://code.claude.com/docs/en/skills) |
-| **Subagent** | `secops-review-kit:security-auditor` (`agents/security-auditor.md`) | Chạy trong cửa sổ ngữ cảnh cô lập với quyền chỉ đọc (`Read`, `Grep`, `Glob`) để truy vết luồng dữ liệu từ điểm đầu vào đến điểm thực thi mà không làm đầy phiên chính. | [Claude Code Subagents](https://code.claude.com/docs/en/sub-agents) |
-| **Lifecycle Hooks** | `PreToolUse` & `PostToolUse` (`hooks/hooks.json` + `scripts/verify-before-push.sh`) | Chặn đẩy trực tiếp lên nhánh `main`/`master`/`production`, quét khóa bí mật rò rỉ trước khi `git push` và tự động chạy Prettier sau khi sửa tệp. | [Claude Code Hooks](https://code.claude.com/docs/en/hooks) |
-| **MCP Servers** | `github`, `sentry`, `postgres-readonly` (`.mcp.json`) | Cung cấp kết nối chuẩn hóa tới GitHub PRs, nhật ký lỗi Sentry và truy vấn cơ sở dữ liệu chỉ đọc phục vụ kiểm toán. | [Claude Code MCP](https://code.claude.com/docs/en/mcp) |
+| Component | What it does | Runtime |
+|---|---|---|
+| `pr-security-review` Skill | Reviews diffs, traces source-to-sink paths, checks access control, injection, secrets, SSRF, configuration, dependencies, and test gaps | Agent Skills-compatible hosts |
+| Claude `security-auditor` | Separate read-only security review | Claude Code subagent |
+| Pre-push guard | Blocks configured protected-branch pushes and scans unpushed commits for high-confidence credential patterns | Claude Code hook + Bash, Git, Python 3 |
+| Post-edit formatter | Best-effort Prettier formatting; failures never block an edit | Claude Code hook + optional Prettier |
+| SecOps status pane | Displays Claude Code tool/edit counters | Claude Code Mods runtime |
+| MCP configuration | Optional GitHub, Sentry, and PostgreSQL connections | Claude Code; credentials and remote permissions are separate |
+| PR workflow | Runs Claude Code review from GitHub Actions | GitHub Actions + Anthropic API key |
+| Portable plugin manifests | Package identity for OpenAI/Codex-compatible plugin loading | ChatGPT/Codex plugin ecosystem; publication is separate |
 
-## 2. Cấu trúc thư mục hoàn chỉnh
+## Supported AI coding agents
+
+The portable Skill is stored under `skills/pr-security-review/` and mirrored under `.agents/skills/pr-security-review/`.
+
+| Host | Project-level Skill path | Package included |
+|---|---|---|
+| Claude Code | `.claude/skills/` or Claude plugin | Full Claude plugin |
+| Cursor | `.agents/skills/` or `.cursor/skills/` | Portable Skill |
+| GitHub Copilot | `.agents/skills/` or `.github/skills/` | Portable Skill |
+| OpenAI Codex | `.agents/skills/` | Portable Skill + Codex plugin compatibility manifest |
+| Gemini CLI | `.agents/skills/` or `.gemini/skills/` | Portable Skill |
+| Antigravity, Amp, Cline, Goose, OpenCode, and other GH CLI-supported agents | Host-specific location selected by GitHub CLI | Portable Skill via `gh skill install` |
+
+The review instructions are portable; Claude-specific Mods, hooks, subagents, MCP config and GitHub Actions do **not** automatically run in other hosts. Each agent uses its own tools and permission model. See [Platform compatibility](docs/PLATFORM-COMPATIBILITY.md).
+
+## Install
+
+### Claude Code plugin
+
+In Claude Code:
 
 ```text
-secops-review-kit/
-├── .claude-plugin/ (plugin.json, marketplace.json)
-├── .github/workflows/claude-secops-review.yml
-├── agents/security-auditor.md
-├── skills/pr-security-review/SKILL.md
-├── skills/pr-security-review/references/owasp-checklist.md
-├── hooks/hooks.json
-├── hooks/register.js
-├── scripts/verify-before-push.sh
-├── evals/sqli-and-secret-leak/ (prompt and graders)
-├── tests/secops-mod.test.ts
-├── .mcp.json
-└── README.md
-```
-
-## 3. Cài đặt từ GitHub Marketplace nội bộ
-
-```text
-/plugin marketplace add Thanhuydiet207-a11y/Sentinel-Code
+/plugin marketplace add thanhuydiet207-a11y/Sentinel-Code
 /plugin install secops-review-kit@internal-secops-marketplace
 ```
 
-Hoặc từ Terminal:
+Or in a terminal:
 
 ```bash
-claude plugin marketplace add Thanhuydiet207-a11y/Sentinel-Code
-claude plugin install secops-review-kit@internal-secops-marketplace --scope project
+claude plugin marketplace add thanhuydiet207-a11y/Sentinel-Code
+claude plugin install secops-review-kit@internal-secops-marketplace --scope user
 ```
 
-**Quan trọng:** `postgres-readonly` chỉ là tên cấu hình; quyền chỉ đọc phải được áp dụng trực tiếp bằng role PostgreSQL và quyền của credential GitHub/Sentry phải được giới hạn. Xem [hướng dẫn cấu hình bảo mật MCP](docs/MCP-SECURITY.md).
+### Cursor, Copilot, Codex, Gemini CLI and other agents
 
-Cấp quyền thực thi cho hook và khai báo các biến môi trường cần thiết cho MCP:
+Using the included installer for common targets:
 
 ```bash
-chmod +x scripts/verify-before-push.sh
-export GITHUB_PERSONAL_ACCESS_TOKEN="<your-token>"
-export SECOPS_READONLY_DATABASE_URL="<read-only-postgres-connection>"
+git clone https://github.com/thanhuydiet207-a11y/Sentinel-Code.git
+cd Sentinel-Code
+bash scripts/install-agent-skills.sh --agent shared --scope project
 ```
 
-## 4. Chạy thử và kiểm thử
-
-Kiểm tra cấu trúc plugin và bộ benchmark (không gọi model, không phát sinh phí):
+The shared `.agents/skills/` location is supported by Cursor, GitHub Copilot, Codex, Gemini CLI, and several other coding agents. To install a host-specific location:
 
 ```bash
-claude plugin validate --strict .
+bash scripts/install-agent-skills.sh --agent cursor --scope project
+bash scripts/install-agent-skills.sh --agent copilot --scope project
+bash scripts/install-agent-skills.sh --agent codex --scope project
+bash scripts/install-agent-skills.sh --agent gemini --scope project
+bash scripts/install-agent-skills.sh --agent claude --scope project
+```
+
+For the broadest agent coverage, use the official GitHub CLI skill installer. It supports many more agent targets and handles their host-specific directories:
+
+```bash
+gh skill preview thanhuydiet207-a11y/Sentinel-Code
+gh skill install thanhuydiet207-a11y/Sentinel-Code skills/pr-security-review --agent cursor --scope project
+gh skill install thanhuydiet207-a11y/Sentinel-Code skills/pr-security-review --agent github-copilot --scope project
+gh skill install thanhuydiet207-a11y/Sentinel-Code skills/pr-security-review --agent codex --scope project
+gh skill install thanhuydiet207-a11y/Sentinel-Code skills/pr-security-review --agent gemini-cli --scope project
+gh skill install thanhuydiet207-a11y/Sentinel-Code skills/pr-security-review --agent antigravity --scope project
+gh skill install thanhuydiet207-a11y/Sentinel-Code skills/pr-security-review --agent opencode --scope project
+```
+
+Use `--scope user` for a personal installation in your home directory. Run `gh skill install --help` to see the exact agent identifiers supported by your installed GitHub CLI release. The custom installer only copies files; it does not install dependencies, alter agent permissions, configure MCP, or enable hooks.
+
+### ChatGPT and Codex plugin package
+
+The repository includes a schema-declared root `plugin.json` for the portable Agent Plugins format and a Codex compatibility manifest at `.codex-plugin/plugin.json`. The root manifest points OpenAI setup to the packaged review Skill through `extensions.com.openai.onboardingSkill`; the `skills/` directory is discovered by the portable package format. The Claude `.mcp.json` remains Claude-specific and is not copied into the OpenAI package because its transport and authentication settings have not been revalidated for portable MCP use. The package has not been submitted to or published in a public plugin directory; publication requires separate listing, privacy, support, and review metadata.
+
+## Optional MCP servers
+
+The repository's `.mcp.json` is a Claude Code MCP configuration, not a universal configuration for all agents. It does not grant permissions by itself.
+
+- **GitHub:** use a fine-grained token restricted to the intended repository and required permissions.
+- **Sentry:** complete the authentication flow required by the Sentry MCP endpoint.
+- **PostgreSQL:** use a dedicated database role with effective read-only privileges. Follow [MCP security configuration](docs/MCP-SECURITY.md).
+
+Do not commit tokens, passwords, connection strings, or local secrets. A server name such as `postgres-readonly` does not enforce read-only access.
+
+## Git push protection
+
+The Claude Code PreToolUse hook examines Bash commands before execution. It is a client-side safety guard, not a server-side authorization boundary. It parses a limited shell grammar and scans local commits not reachable from remote-tracking refs for high-confidence credential patterns.
+
+Requirements: Bash, Git and Python 3. If Python is unavailable, normal non-push Bash commands are allowed; commands that look like Git pushes are blocked because they cannot be checked safely.
+
+The parser is not a full shell interpreter and cannot recognize every possible command construction. Enforce protected branches and secret scanning on the Git hosting service as authoritative controls.
+
+## Validation
+
+On Linux with Bash, Git, jq and Python 3:
+
+```bash
+bash -n scripts/verify-before-push.sh
+bash -n scripts/format-after-edit.sh
+bash -n scripts/install-agent-skills.sh
+bash tests/verify-before-push.test.sh
+bash tests/format-after-edit.test.sh
+bash tests/install-agent-skills.test.sh
+python3 tests/validate-agent-skills.py
 python3 tests/validate-eval-suite.py
 ```
 
-Bộ eval gồm 5 tình huống: SQL Injection + log token, IDOR, SSRF, stored XSS và negative control (mã an toàn). Mỗi case có grader chấm kết quả bảo mật bằng LLM và grader xác nhận Skill `pr-security-review` đã được gọi.
-
-Chạy smoke eval một lượt cho mỗi case, không so sánh baseline:
+Validate the Claude plugin with a compatible Claude Code CLI:
 
 ```bash
-claude plugin eval . --runs 1 --ablation none --threshold 0.8 --no-publish --max-cost-usd 5
+claude plugin validate --strict .
+claude plugin test .
 ```
 
-Để đánh giá ổn định hơn và so sánh với baseline không có plugin, chạy mặc định:
+Model-based evals call a real model and may incur cost. Run them deliberately, not on every CI push. Eval cases test selected behaviors; they do not prove complete vulnerability coverage.
 
-```bash
-claude plugin eval . --judge-model sonnet --threshold 0.8 --no-publish
-```
+## Versioning
 
-**Lưu ý chi phí:** eval gọi model thật; grader `llm` cũng dùng judge model. Không chạy trong CI mỗi lần push để tránh tiêu tốn hạn mức/API. CI chỉ xác thực cấu trúc suite; kết quả benchmark chất lượng phải được chạy riêng và lưu báo cáo. Các case được thiết kế để đánh giá hành vi, không chứng minh plugin phát hiện được mọi lỗ hổng.
-
-Workflow AI PR review tùy chọn có thể dùng secret `ANTHROPIC_API_KEY` trong Settings → Secrets and variables → Actions. Không lưu token hoặc thông tin kết nối thật trong repository.
+This development line is version `1.1.0`. Keep `skills/pr-security-review/` and `.agents/skills/pr-security-review/` byte-for-byte identical. Run `tests/validate-agent-skills.py` after changing either copy.

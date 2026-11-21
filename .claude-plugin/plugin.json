@@ -1,22 +1,25 @@
 {
   "name": "secops-review-kit",
-  "displayName": "SecOps PR & Security Auditor Kit",
-  "version": "1.0.1",
-  "description": "Gói plugin tích hợp Skill rà soát PR (/secops-review-kit:pr-security-review), Subagent kiểm toán bảo mật độc lập (secops-review-kit:security-auditor) và Hooks tự động kiểm tra an toàn mã nguồn.",
+  "displayName": "Sentinel-Code Security Review Kit",
+  "version": "1.1.0",
+  "description": "Multi-agent security review workflow with a portable Agent Skill, read-only Claude subagent, lifecycle guards, and optional MCP integrations.",
   "author": {
-    "name": "SecOps Engineering Team",
-    "url": "https://code.claude.com/docs/en/plugins/create"
+    "name": "Sentinel-Code Maintainers",
+    "url": "https://github.com/thanhuydiet207-a11y"
   },
   "license": "Apache-2.0",
-  "homepage": "https://code.claude.com/docs/en/plugins/manifest-reference",
-  "repository": "https://github.com/Thanhuydiet207-a11y/Sentinel-Code",
+  "homepage": "https://github.com/thanhuydiet207-a11y/Sentinel-Code",
+  "repository": "https://github.com/thanhuydiet207-a11y/Sentinel-Code",
   "keywords": [
-    "claude-code",
+    "devsecops",
     "security",
     "pr-review",
-    "subagent",
-    "skills",
-    "hooks"
+    "agent-skills",
+    "claude-code",
+    "cursor",
+    "github-copilot",
+    "codex",
+    "gemini-cli"
   ],
   "skills": [
     "./skills"
@@ -24,5 +27,7 @@
   "agents": [
     "./agents/security-auditor.md"
   ],
-  "hooks": "./hooks/hooks.json"
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json",
+  "icon": "./assets/icon.png"
 }

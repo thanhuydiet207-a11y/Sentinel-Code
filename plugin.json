@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "sentinel-code-security-review",
+  "version": "1.1.0",
+  "description": "Evidence-based, read-only AI security review workflows for code changes and pull requests, distributed as portable Agent Skills.",
+  "author": {
+    "name": "Sentinel-Code Maintainers",
+    "url": "https://github.com/thanhuydiet207-a11y"
+  },
+  "homepage": "https://github.com/thanhuydiet207-a11y/Sentinel-Code",
+  "repository": "https://github.com/thanhuydiet207-a11y/Sentinel-Code",
+  "license": "Apache-2.0",
+  "keywords": [
+    "security",
+    "devsecops",
+    "agent-skills",
+    "code-review",
+    "pull-request"
+  ],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/pr-security-review/SKILL.md"
+    }
+  }
+}
