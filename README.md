@@ -254,3 +254,24 @@ Build a decision report from patch validation, patch risk, temporary test sandbo
     python3 -m sentinel_core remediation-report evidence-bundle.json --output remediation-report.json
 
 The report checks the supplied evidence gates and reports blockers. A \`ready_for_manual_approval\` result still requires human approval; it does not apply patches or merge changes. It does not independently run the evidence-producing steps.
+
+
+## Phase 4F: Evidence Integrity & Provenance
+
+Seal and verify scan/test artifacts by SHA-256:
+
+    python3 -m sentinel_core seal-evidence evidence-bundle.json --root . --output sealed-evidence.json
+    python3 -m sentinel_core verify-evidence sealed-evidence.json --root .
+
+The seal binds artifact hashes and bundle metadata. Verification detects content or metadata changes. Hashes alone do not prove authorship or trusted timestamps; independently verify source revision and candidate identity.
+
+
+## Phase 4G: Remediation Audit Trail
+
+Create and verify a hash-chained event trail and check lifecycle prerequisites:
+
+    python3 -m sentinel_core audit-trail events.json --session-id SESSION-001 --output audit.json
+    python3 -m sentinel_core verify-audit-trail audit.json --output verification.json
+    python3 -m sentinel_core audit-lifecycle events.json --output lifecycle.json
+
+Hash chaining detects edits/reordering, but does not establish authenticity, trusted timestamps, immutable storage, or access control. Events are caller-supplied; the audit CLI does not execute remediation.

@@ -21,6 +21,9 @@ from .remediation_sandbox import run_remediation_sandbox
 from .regression import compare_scan_snapshots
 from .patch_risk import review_patch_risk
 from .remediation_report import build_remediation_report
+from .provenance import seal_evidence_bundle, verify_evidence_bundle
+from .audit_trail import build_audit_trail, verify_audit_trail, lifecycle_status
+from .policy_engine import evaluate_policy
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -121,6 +124,29 @@ def build_parser() -> argparse.ArgumentParser:
     risk_parser.add_argument("proposal")
     risk_parser.add_argument("--output")
 
+    audit_parser = sub.add_parser("audit-trail", help="Build a hash-chained remediation event trail")
+    audit_parser.add_argument("events")
+    audit_parser.add_argument("--session-id", required=True)
+    audit_parser.add_argument("--output")
+
+    verify_audit_parser = sub.add_parser("verify-audit-trail", help="Verify audit event hash chain")
+    verify_audit_parser.add_argument("trail")
+    verify_audit_parser.add_argument("--output")
+
+    lifecycle_parser = sub.add_parser("audit-lifecycle", help="Check remediation lifecycle prerequisites")
+    lifecycle_parser.add_argument("events")
+    lifecycle_parser.add_argument("--output")
+
+    seal_parser = sub.add_parser("seal-evidence", help="Hash evidence artifacts and seal a provenance bundle")
+    seal_parser.add_argument("bundle")
+    seal_parser.add_argument("--root", default=".")
+    seal_parser.add_argument("--output")
+
+    verify_provenance_parser = sub.add_parser("verify-evidence", help="Verify sealed artifact and bundle hashes")
+    verify_provenance_parser.add_argument("sealed")
+    verify_provenance_parser.add_argument("--root", default=".")
+    verify_provenance_parser.add_argument("--output")
+
     remediation_parser = sub.add_parser("remediation-report", help="Build a remediation decision report from supplied evidence artifacts")
     remediation_parser.add_argument("bundle")
     remediation_parser.add_argument("--output")
@@ -129,6 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser.add_argument("baseline")
     compare_parser.add_argument("candidate")
     compare_parser.add_argument("--output")
+
+    policy_parser = sub.add_parser("evaluate-policy", help="Evaluate declarative remediation gates from supplied evidence")
+    policy_parser.add_argument("policy")
+    policy_parser.add_argument("evidence")
+    policy_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -255,6 +286,41 @@ def main(argv: list[str] | None = None) -> int:
             print("Candidate tests completed in a temporary workspace.", file=sys.stderr)
             return 0 if result["status"] == "pass" else 1
 
+        if args.command == "audit-trail":
+            events = load_json(args.events)
+            result = build_audit_trail(args.session_id, events)
+            _write_json(result, args.output)
+            print(f"Audit trail events: {result['event_count']}", file=sys.stderr)
+            return 0
+
+        if args.command == "verify-audit-trail":
+            trail = load_json(args.trail)
+            result = verify_audit_trail(trail)
+            _write_json(result, args.output)
+            print(f"Audit integrity: {result['integrity']}", file=sys.stderr)
+            return 0 if result["valid"] else 1
+
+        if args.command == "audit-lifecycle":
+            events = load_json(args.events)
+            result = lifecycle_status(events)
+            _write_json(result, args.output)
+            print(f"Lifecycle: {result['status']}", file=sys.stderr)
+            return 0 if result["status"] == "complete" else 1
+
+        if args.command == "seal-evidence":
+            bundle = load_json(args.bundle)
+            result = seal_evidence_bundle(bundle, args.root)
+            _write_json(result, args.output)
+            print("Evidence bundle sealed.", file=sys.stderr)
+            return 0
+
+        if args.command == "verify-evidence":
+            sealed = load_json(args.sealed)
+            result = verify_evidence_bundle(sealed, args.root)
+            _write_json(result, args.output)
+            print(f"Evidence integrity: {result['integrity']}", file=sys.stderr)
+            return 0 if result["valid"] else 1
+
         if args.command == "remediation-report":
             bundle = load_json(args.bundle)
             result = build_remediation_report(bundle)
@@ -276,6 +342,12 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print(f"Scan comparison: {result['status']}", file=sys.stderr)
             return 1 if result["status"] == "regression" else 0
+
+        if args.command == "evaluate-policy":
+            result = evaluate_policy(load_json(args.policy), load_json(args.evidence))
+            _write_json(result, args.output)
+            print("Policy decision: " + result["decision"], file=sys.stderr)
+            return 0 if result["decision"] == "PASS" else 1
 
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
