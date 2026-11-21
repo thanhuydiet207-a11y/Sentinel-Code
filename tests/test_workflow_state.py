@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 
 from sentinel_core.workflow_state import (
-    create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow, resume_plan, retry_stage, verify_workflow, validate_workflow_schema, migrate_workflow,
+    create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow, resume_plan, retry_stage, verify_workflow, validate_workflow_schema, migrate_workflow, stage_execution_decision,
 )
 
 _DIGEST = hashlib.sha256(b"input package").hexdigest()
@@ -219,6 +219,42 @@ class WorkflowStateTests(unittest.TestCase):
             result = verify_workflow(state)
             self.assertFalse(result["valid"])
             self.assertIn("checkpoint_0_completed_error_present", result["errors"])
+
+    def test_resume_execution_gate_skips_completed_stage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "gate-completed", ["a", "b"], _DIGEST)
+            checkpoint_stage(tmp, "gate-completed", "a", "completed")
+            result = stage_execution_decision(tmp, "gate-completed", "a", _DIGEST)
+            self.assertFalse(result["allowed"])
+            self.assertEqual(result["reason"], "stage_already_terminal")
+
+    def test_resume_execution_gate_enforces_stage_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "gate-order", ["a", "b"], _DIGEST)
+            result = stage_execution_decision(tmp, "gate-order", "b", _DIGEST)
+            self.assertFalse(result["allowed"])
+            self.assertEqual(result["reason"], "prior_stage_incomplete")
+
+    def test_resume_execution_gate_requires_idempotency_for_side_effects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "gate-side-effect", ["a"], _DIGEST)
+            result = stage_execution_decision(tmp, "gate-side-effect", "a", _DIGEST, side_effecting=True)
+            self.assertFalse(result["allowed"])
+            self.assertEqual(result["reason"], "idempotency_key_required")
+            approved = stage_execution_decision(tmp, "gate-side-effect", "a", _DIGEST, side_effecting=True, idempotency_key="run-a-stage-a")
+            self.assertTrue(approved["allowed"])
+
+    def test_resume_execution_gate_blocks_input_mismatch_and_corruption(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "gate-integrity", ["a"], _DIGEST)
+            wrong = stage_execution_decision(tmp, "gate-integrity", "a", hashlib.sha256(b"changed").hexdigest())
+            self.assertEqual(wrong["reason"], "input_digest_mismatch")
+            state = load_workflow(tmp, "gate-integrity")
+            state["status"] = "completed"
+            path = Path(tmp) / "gate-integrity.json"
+            path.write_text(json.dumps(state), encoding="utf-8")
+            blocked = stage_execution_decision(tmp, "gate-integrity", "a", _DIGEST)
+            self.assertEqual(blocked["reason"], "checkpoint_integrity_invalid")
 
     def test_invalid_workflow_id_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

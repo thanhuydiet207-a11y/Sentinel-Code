@@ -326,6 +326,35 @@ def resume_plan(store: str | Path, workflow_id: str, input_digest: str | None = 
             "limitations": state.get("limitations", [])}
 
 
+def stage_execution_decision(store: str | Path, workflow_id: str, stage: str, input_digest: str, side_effecting: bool = False, idempotency_key: str | None = None) -> dict:
+    """Fail-closed execution gate for resumed stages; does not execute the stage."""
+    state = load_workflow(store, workflow_id)
+    checked = verify_workflow(state)
+    if not checked["valid"]:
+        return {"allowed": False, "reason": "checkpoint_integrity_invalid", "errors": checked["errors"]}
+    if not isinstance(input_digest, str) or input_digest.lower() != state.get("input_digest"):
+        return {"allowed": False, "reason": "input_digest_mismatch"}
+    if stage not in state.get("stages", []):
+        return {"allowed": False, "reason": "stage_not_declared"}
+    if state.get("status") != "running":
+        return {"allowed": False, "reason": "workflow_not_running", "status": state.get("status")}
+    latest = {s: next((event for event in reversed(state["checkpoints"]) if event.get("stage") == s), None) for s in state["stages"]}
+    current = latest.get(stage)
+    if current and current.get("status") in {"completed", "skipped"}:
+        return {"allowed": False, "reason": "stage_already_terminal", "status": current["status"]}
+    if current and current.get("status") == "failed":
+        return {"allowed": False, "reason": "retry_marker_required"}
+    if current and current.get("status") != "retry":
+        return {"allowed": False, "reason": "stage_attempt_already_recorded"}
+    index = state["stages"].index(stage)
+    for previous in state["stages"][:index]:
+        event = latest.get(previous)
+        if not event or event.get("status") not in {"completed", "skipped"}:
+            return {"allowed": False, "reason": "prior_stage_incomplete", "stage": previous}
+    if side_effecting and (not isinstance(idempotency_key, str) or not idempotency_key.strip()):
+        return {"allowed": False, "reason": "idempotency_key_required"}
+    return {"allowed": True, "reason": "stage_ready", "stage": stage, "side_effecting": bool(side_effecting), "idempotency_key": idempotency_key}
+
 def checkpoint_outputs(store: str | Path, workflow_id: str, input_digest: str | None = None) -> dict:
     """Return verified outputs for completed stages; refuse corrupted or mismatched state."""
     state = load_workflow(store, workflow_id)
