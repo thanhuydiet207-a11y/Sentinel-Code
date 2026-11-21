@@ -1,17 +1,24 @@
 """Declarative remediation policy evaluation; advisory gate, never authorizes execution."""
 from __future__ import annotations
+
+import math
 from typing import Any
 
 _ALLOWED = {"policy_id", "version", "max_risk_score", "required_scanners",
             "required_reviewers", "min_reviewers", "require_evidence_verified",
-            "require_sandbox_pass", "require_regression_clean", "require_manual_approval"}
+            "require_sandbox_pass", "require_regression_clean", "require_manual_approval",
+            "require_ai_adjudication", "min_adjudicator_reviewers",
+            "max_cross_stage_disagreements", "min_adjudicator_confidence"}
 _BOOL_FIELDS = {"require_evidence_verified", "require_sandbox_pass",
-                "require_regression_clean", "require_manual_approval"}
+                "require_regression_clean", "require_manual_approval",
+                "require_ai_adjudication"}
+
 
 def _names(value: Any) -> list[str]:
     if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
         return []
     return list(dict.fromkeys(value))
+
 
 def evaluate_policy(policy: Any, evidence: Any) -> dict:
     """Return PASS/BLOCK/REVIEW from supplied evidence; never authorizes applying or merging."""
@@ -46,9 +53,21 @@ def evaluate_policy(policy: Any, evidence: Any) -> dict:
     if not isinstance(min_reviewers, int) or isinstance(min_reviewers, bool) or min_reviewers < 0:
         raise ValueError("min_reviewers must be a non-negative integer")
 
+    min_adjudicators = policy.get("min_adjudicator_reviewers", 1)
+    if not isinstance(min_adjudicators, int) or isinstance(min_adjudicators, bool) or min_adjudicators < 1:
+        raise ValueError("min_adjudicator_reviewers must be a positive integer")
+    max_disagreements = policy.get("max_cross_stage_disagreements", 0)
+    if not isinstance(max_disagreements, int) or isinstance(max_disagreements, bool) or max_disagreements < 0:
+        raise ValueError("max_cross_stage_disagreements must be a non-negative integer")
+    min_confidence = policy.get("min_adjudicator_confidence", 0.0)
+    if (isinstance(min_confidence, bool) or not isinstance(min_confidence, (int, float))
+            or not math.isfinite(min_confidence) or not 0 <= min_confidence <= 1):
+        raise ValueError("min_adjudicator_confidence must be a finite number between 0 and 1")
+
     gates: dict[str, bool | None] = {}
     blockers: list[str] = []
     missing: list[str] = []
+    review_reasons: list[str] = []
 
     validation = evidence.get("patch_validation")
     if not isinstance(validation, dict) or "valid" not in validation:
@@ -115,10 +134,39 @@ def evaluate_policy(policy: Any, evidence: Any) -> dict:
     if len(reviewer_names) < min_reviewers:
         missing.append("minimum_reviewer_count_not_met")
 
-    decision = "BLOCK" if blockers else "REVIEW" if missing else "PASS"
+    if policy.get("require_ai_adjudication", False):
+        ai_review = evidence.get("ai_adjudication")
+        if not isinstance(ai_review, dict) or ai_review.get("status") != "complete":
+            gates["ai_adjudication"] = None
+            missing.append("ai_adjudication_not_completed")
+        else:
+            gates["ai_adjudication"] = True
+            reviewer_count = ai_review.get("reviewer_count")
+            finding_count = ai_review.get("finding_count")
+            adjudicated_count = ai_review.get("adjudicated_finding_count")
+            disagreements = ai_review.get("cross_stage_disagreements")
+            confidence = ai_review.get("minimum_confidence")
+            if not isinstance(reviewer_count, int) or isinstance(reviewer_count, bool) or reviewer_count < min_adjudicators:
+                missing.append("minimum_adjudicator_reviewers_not_met")
+            if (not isinstance(finding_count, int) or isinstance(finding_count, bool) or finding_count < 0
+                    or not isinstance(adjudicated_count, int) or isinstance(adjudicated_count, bool)
+                    or adjudicated_count != finding_count):
+                missing.append("adjudicator_finding_coverage_incomplete")
+            if not isinstance(disagreements, int) or isinstance(disagreements, bool) or disagreements < 0:
+                missing.append("cross_stage_disagreement_count_missing")
+            elif disagreements > max_disagreements:
+                review_reasons.append("cross_stage_disagreement_limit_exceeded")
+            if (isinstance(confidence, bool) or not isinstance(confidence, (int, float))
+                    or not math.isfinite(confidence) or not 0 <= confidence <= 1):
+                missing.append("adjudicator_confidence_missing")
+            elif confidence < min_confidence:
+                review_reasons.append("adjudicator_confidence_below_policy")
+
+    decision = "BLOCK" if blockers else "REVIEW" if missing or review_reasons else "PASS"
     return {
         "policy_id": policy_id, "policy_version": str(version), "decision": decision,
-        "gates": gates, "blockers": sorted(set(blockers)), "missing_evidence": sorted(set(missing)),
+        "gates": gates, "blockers": sorted(set(blockers)),
+        "missing_evidence": sorted(set(missing)), "review_reasons": sorted(set(review_reasons)),
         "review_required": True, "human_approval_required": True,
         "automatic_apply_allowed": False, "automatic_merge_allowed": False,
         "limitations": ["Evaluation uses caller-supplied evidence and does not independently execute scanners or reviewers.",
