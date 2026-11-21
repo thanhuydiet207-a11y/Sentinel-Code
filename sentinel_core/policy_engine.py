@@ -140,7 +140,7 @@ def evaluate_policy(policy: Any, evidence: Any) -> dict:
             gates["ai_adjudication"] = None
             missing.append("ai_adjudication_not_completed")
         else:
-            gates["ai_adjudication"] = True
+            ai_gate_pass = True
             reviewer_count = ai_review.get("reviewer_count")
             finding_count = ai_review.get("finding_count")
             adjudicated_count = ai_review.get("adjudicated_finding_count")
@@ -148,19 +148,26 @@ def evaluate_policy(policy: Any, evidence: Any) -> dict:
             confidence = ai_review.get("minimum_confidence")
             if not isinstance(reviewer_count, int) or isinstance(reviewer_count, bool) or reviewer_count < min_adjudicators:
                 missing.append("minimum_adjudicator_reviewers_not_met")
+                ai_gate_pass = False
             if (not isinstance(finding_count, int) or isinstance(finding_count, bool) or finding_count < 0
                     or not isinstance(adjudicated_count, int) or isinstance(adjudicated_count, bool)
                     or adjudicated_count != finding_count):
                 missing.append("adjudicator_finding_coverage_incomplete")
+                ai_gate_pass = False
             if not isinstance(disagreements, int) or isinstance(disagreements, bool) or disagreements < 0:
                 missing.append("cross_stage_disagreement_count_missing")
+                ai_gate_pass = False
             elif disagreements > max_disagreements:
                 review_reasons.append("cross_stage_disagreement_limit_exceeded")
+                ai_gate_pass = False
             if (isinstance(confidence, bool) or not isinstance(confidence, (int, float))
                     or not math.isfinite(confidence) or not 0 <= confidence <= 1):
                 missing.append("adjudicator_confidence_missing")
+                ai_gate_pass = False
             elif confidence < min_confidence:
                 review_reasons.append("adjudicator_confidence_below_policy")
+                ai_gate_pass = False
+            gates["ai_adjudication"] = ai_gate_pass
 
     decision = "BLOCK" if blockers else "REVIEW" if missing or review_reasons else "PASS"
     return {
