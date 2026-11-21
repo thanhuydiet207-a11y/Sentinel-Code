@@ -10,7 +10,7 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-_REF_RE = re.compile(r"^(.+):(\[0-9]+)(?:-(\[0-9]+))?$")
+_REF_RE = re.compile(r"^(.+):([0-9]+)(?:-([0-9]+))?$")
 
 
 def _resolve(root: Path, relative: str) -> Path:
