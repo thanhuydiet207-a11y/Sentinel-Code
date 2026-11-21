@@ -79,7 +79,7 @@ def _provider_call(provider: str, prompt: str, transport: Transport = _transport
         key = os.environ.get("SENTINEL_OPENAI_API_KEY")
         if not key:
             raise RuntimeError("SENTINEL_OPENAI_API_KEY is required")
-        model = os.environ.get("SENTINEL_OPENAI_MODEL", "gpt-4o-mini")
+        model = os.environ.get("SENTINEL_OPENAI_MODEL", "gpt-6-luna")
         url = os.environ.get("SENTINEL_OPENAI_BASE_URL", "https://api.openai.com/v1/chat/completions").rstrip("/")
         body = {"model": model, "temperature": 0, "messages": [{"role": "system", "content": "Return strict JSON only."}, {"role": "user", "content": prompt}]}
         headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
@@ -90,7 +90,7 @@ def _provider_call(provider: str, prompt: str, transport: Transport = _transport
         key = os.environ.get("SENTINEL_ANTHROPIC_API_KEY")
         if not key:
             raise RuntimeError("SENTINEL_ANTHROPIC_API_KEY is required")
-        model = os.environ.get("SENTINEL_ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
+        model = os.environ.get("SENTINEL_ANTHROPIC_MODEL", "claude-haiku-4-5")
         url = os.environ.get("SENTINEL_ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1/messages")
         body = {"model": model, "max_tokens": 4096, "temperature": 0, "system": "Return strict JSON only.", "messages": [{"role": "user", "content": prompt}]}
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
@@ -101,7 +101,7 @@ def _provider_call(provider: str, prompt: str, transport: Transport = _transport
         key = os.environ.get("SENTINEL_GEMINI_API_KEY")
         if not key:
             raise RuntimeError("SENTINEL_GEMINI_API_KEY is required")
-        model = os.environ.get("SENTINEL_GEMINI_MODEL", "gemini-2.0-flash")
+        model = os.environ.get("SENTINEL_GEMINI_MODEL", "gemini-2.5-flash")
         url = os.environ.get("SENTINEL_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
         endpoint = url + "/models/" + urllib.parse.quote(model, safe="") + ":generateContent?key=" + urllib.parse.quote(key)
         body = {"generationConfig": {"temperature": 0, "responseMimeType": "application/json"}, "contents": [{"role": "user", "parts": [{"text": prompt}]}]}
