@@ -1,0 +1,244 @@
+{
+  "dataset_version": "1.0",
+  "name": "Sentinel-Code Security Core Seed Benchmark",
+  "description": "Small deterministic seed set with deliberately vulnerable and safe code fixtures. Use as a regression baseline, not as a representative measure of real-world security coverage.",
+  "matching": {
+    "rule_id": "case-insensitive exact match",
+    "path": "exact relative path",
+    "lines": "candidate and expected line ranges must overlap"
+  },
+  "cases": [
+    {
+      "id": "JS-SQLI-001",
+      "language": "javascript",
+      "label": "vulnerable",
+      "description": "Untrusted email is concatenated into a SQL statement.",
+      "files": {
+        "src/invoice.js": "export async function invoice(db, email) {\n  const query = \"SELECT * FROM invoices WHERE email = '\" + email + \"'\";\n  return db.raw(query);\n}\n"
+      },
+      "expected_findings": [
+        {
+          "rule_id": "CWE-89/SQL-INJECTION",
+          "category": "CWE-89",
+          "path": "src/invoice.js",
+          "start_line": 2,
+          "end_line": 3,
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "JS-SQLI-SAFE-001",
+      "language": "javascript",
+      "label": "safe",
+      "description": "Parameterized query binds untrusted input.",
+      "files": {
+        "src/invoice.js": "export async function invoice(db, email) {\n  const query = \"SELECT * FROM invoices WHERE email = ?\";\n  return db.query(query, [email]);\n}\n"
+      },
+      "expected_findings": []
+    },
+    {
+      "id": "JS-IDOR-001",
+      "language": "javascript",
+      "label": "vulnerable",
+      "description": "Authenticated route uses a caller-controlled user identifier without proving ownership.",
+      "files": {
+        "src/routes/invoices.js": "app.get(\"/users/:userId/invoices/:invoiceId\", requireAuth, async (req, res) => {\n  const { userId, invoiceId } = req.params;\n  return db.query(\"SELECT * FROM invoices WHERE id = $1 AND user_id = $2\", [invoiceId, userId]);\n});\n"
+      },
+      "expected_findings": [
+        {
+          "rule_id": "CWE-639/AUTHZ-USER-CONTROLLED-ID",
+          "category": "CWE-639",
+          "path": "src/routes/invoices.js",
+          "start_line": 3,
+          "end_line": 3,
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "JS-IDOR-SAFE-001",
+      "language": "javascript",
+      "label": "safe",
+      "description": "Invoice ownership is bound to the authenticated principal.",
+      "files": {
+        "src/routes/invoices.js": "app.get(\"/invoices/:invoiceId\", requireAuth, async (req, res) => {\n  const invoiceId = req.params.invoiceId;\n  return db.query(\"SELECT * FROM invoices WHERE id = $1 AND user_id = $2\", [invoiceId, req.user.id]);\n});\n"
+      },
+      "expected_findings": []
+    },
+    {
+      "id": "PY-CMDI-001",
+      "language": "python",
+      "label": "vulnerable",
+      "description": "Untrusted filename is concatenated into a shell command.",
+      "files": {
+        "src/convert.py": "import subprocess\nname = request.args[\"name\"]\nsubprocess.run(\"convert \" + name, shell=True, check=True)\n"
+      },
+      "expected_findings": [
+        {
+          "rule_id": "CWE-78/OS-COMMAND-INJECTION",
+          "category": "CWE-78",
+          "path": "src/convert.py",
+          "start_line": 3,
+          "end_line": 3,
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "PY-CMDI-SAFE-001",
+      "language": "python",
+      "label": "safe",
+      "description": "Executable and arguments are passed separately without a shell.",
+      "files": {
+        "src/convert.py": "import subprocess\nname = validate_image_name(request.args[\"name\"])\nsubprocess.run([\"convert\", name], shell=False, check=True)\n"
+      },
+      "expected_findings": []
+    },
+    {
+      "id": "PY-SSRF-001",
+      "language": "python",
+      "label": "vulnerable",
+      "description": "A request-controlled URL is fetched without destination validation.",
+      "files": {
+        "src/preview.py": "url = request.json[\"url\"]\nresponse = requests.get(url, timeout=3)\n"
+      },
+      "expected_findings": [
+        {
+          "rule_id": "CWE-918/UNVALIDATED-URL-FETCH",
+          "category": "CWE-918",
+          "path": "src/preview.py",
+          "start_line": 2,
+          "end_line": 2,
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "PY-SSRF-SAFE-001",
+      "language": "python",
+      "label": "safe",
+      "description": "URL is validated against public HTTPS destinations and redirects are disabled.",
+      "files": {
+        "src/preview.py": "url = validate_public_https_url(request.json[\"url\"])\nresponse = requests.get(url, timeout=3, allow_redirects=False)\n"
+      },
+      "expected_findings": []
+    },
+    {
+      "id": "JS-XSS-001",
+      "language": "javascript",
+      "label": "vulnerable",
+      "description": "Request-controlled content is written to an HTML parsing sink.",
+      "files": {
+        "src/profile.js": "const bio = req.body.bio;\nelement.innerHTML = bio;\n"
+      },
+      "expected_findings": [
+        {
+          "rule_id": "CWE-79/DOM-XSS",
+          "category": "CWE-79",
+          "path": "src/profile.js",
+          "start_line": 2,
+          "end_line": 2,
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "JS-XSS-SAFE-001",
+      "language": "javascript",
+      "label": "safe",
+      "description": "Request-controlled content is assigned as text rather than parsed HTML.",
+      "files": {
+        "src/profile.js": "const bio = req.body.bio;\nelement.textContent = bio;\n"
+      },
+      "expected_findings": []
+    },
+    {
+      "id": "PY-PATH-TRAVERSAL-001",
+      "language": "python",
+      "label": "vulnerable",
+      "description": "A caller-controlled path segment is joined to a storage root and opened without containment validation.",
+      "files": {
+        "src/download.py": "filename = request.args[\"file\"]\npath = os.path.join(\"/srv/uploads\", filename)\nreturn send_file(path)\n"
+      },
+      "expected_findings": [
+        {
+          "rule_id": "CWE-22/PATH-TRAVERSAL",
+          "category": "CWE-22",
+          "path": "src/download.py",
+          "start_line": 2,
+          "end_line": 3,
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "PY-PATH-TRAVERSAL-SAFE-001",
+      "language": "python",
+      "label": "safe",
+      "description": "Resolved path is checked to remain beneath the storage root before it is served.",
+      "files": {
+        "src/download.py": "base = Path(\"/srv/uploads\").resolve()\ncandidate = (base / request.args[\"file\"]).resolve()\nif base not in candidate.parents: raise ValueError(\"invalid path\")\nreturn send_file(candidate)\n"
+      },
+      "expected_findings": []
+    },
+    {
+      "id": "JAVA-XXE-001",
+      "language": "java",
+      "label": "vulnerable",
+      "description": "XML is parsed without disabling external entity and DTD processing.",
+      "files": {
+        "src/XmlLoader.java": "DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();\nDocumentBuilder builder = factory.newDocumentBuilder();\nDocument document = builder.parse(inputStream);\n"
+      },
+      "expected_findings": [
+        {
+          "rule_id": "CWE-611/XXE",
+          "category": "CWE-611",
+          "path": "src/XmlLoader.java",
+          "start_line": 1,
+          "end_line": 3,
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "JAVA-XXE-SAFE-001",
+      "language": "java",
+      "label": "safe",
+      "description": "DOCTYPE and external entities are disabled before parsing untrusted XML.",
+      "files": {
+        "src/XmlLoader.java": "DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();\nfactory.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\nfactory.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\nfactory.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\nDocument document = factory.newDocumentBuilder().parse(inputStream);\n"
+      },
+      "expected_findings": []
+    },
+    {
+      "id": "PY-WEAK-HASH-001",
+      "language": "python",
+      "label": "vulnerable",
+      "description": "MD5 is used as a password hash.",
+      "files": {
+        "src/auth.py": "import hashlib\ndigest = hashlib.md5(password.encode()).hexdigest()\n"
+      },
+      "expected_findings": [
+        {
+          "rule_id": "CWE-328/WEAK-HASH",
+          "category": "CWE-328",
+          "path": "src/auth.py",
+          "start_line": 2,
+          "end_line": 2,
+          "severity": "high"
+        }
+      ]
+    },
+    {
+      "id": "PY-WEAK-HASH-SAFE-001",
+      "language": "python",
+      "label": "safe",
+      "description": "Password hashing uses a password-oriented KDF with a unique salt.",
+      "files": {
+        "src/auth.py": "import hashlib\ndigest = hashlib.pbkdf2_hmac(\"sha256\", password.encode(), salt, 600000)\n"
+      },
+      "expected_findings": []
+    }
+  ]
+}

@@ -92,4 +92,19 @@ Follow with:
 - **Coverage gaps:** important paths not covered by tests.
 - **Release verdict:** `READY`, `FIX BEFORE MERGE`, or `BLOCK RELEASE`, with the top three actions.
 
+## 7. Shared finding output contract
+
+When the host has repository shell access and the repository contains `sentinel_core`, produce findings in the Sentinel-Code JSON contract described in `schemas/security-findings.schema.json`.
+
+Every finding must include:
+- Stable `id`, `rule_id`, CWE/OWASP category, severity, and confidence from 0 to 1.
+- Repository-relative `location.path`, `start_line`, and `end_line`.
+- `evidence.reason` explaining the observed source-to-sink or control-flow fact.
+- `evidence.line_hash`: generate with `python3 -m sentinel_core hash-lines --root . --path PATH --start N --end M`. Do not invent the digest.
+- Impact and a concrete remediation. Include a concise `evidence.data_flow` when tracing is possible.
+
+Before reporting, run `python3 -m sentinel_core validate findings.json --root .`. If the CLI is unavailable on the current host, follow the same schema but clearly state that source-line evidence could not be independently verified. Never fabricate a passing validation result.
+
+The core's priority score is a triage aid based on severity base multiplied by confidence; it is not CVSS and must not silently override the reviewer's evidence-based severity.
+
 If no issue is confirmed, say “No confirmed vulnerability found in the reviewed scope”; do not say “the code is secure.”

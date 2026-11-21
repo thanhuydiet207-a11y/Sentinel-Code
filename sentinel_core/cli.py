@@ -1,0 +1,108 @@
+"""Command-line interface for the Sentinel-Code Security Core."""
+from __future__ import annotations
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+from .benchmark import evaluate_benchmark
+from .core import deduplicate_findings, line_hash_for_file, load_json, render_markdown_report, validate_payload
+
+
+def _write_json(value: Any, destination: str | None) -> None:
+    rendered = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+    if destination:
+        Path(destination).write_text(rendered, encoding="utf-8")
+    else:
+        sys.stdout.write(rendered)
+
+
+def _load_and_validate(input_path: str, root: str) -> dict[str, Any]:
+    payload = load_json(input_path)
+    errors = validate_payload(payload, Path(root))
+    if errors:
+        raise ValueError("\n".join(errors))
+    return payload
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="sentinel-security", description="Sentinel-Code deterministic finding and benchmark engine")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    hash_parser = sub.add_parser("hash-lines", help="Calculate SHA-256 for a repository line range")
+    hash_parser.add_argument("--root", default=".")
+    hash_parser.add_argument("--path", required=True)
+    hash_parser.add_argument("--start", type=int, required=True)
+    hash_parser.add_argument("--end", type=int, required=True)
+
+    validate_parser = sub.add_parser("validate", help="Validate finding schema, safe paths, and source evidence")
+    validate_parser.add_argument("input")
+    validate_parser.add_argument("--root", default=".")
+
+    dedupe_parser = sub.add_parser("dedupe", help="Validate and collapse exact rule/location duplicates")
+    dedupe_parser.add_argument("input")
+    dedupe_parser.add_argument("--root", default=".")
+    dedupe_parser.add_argument("--output")
+
+    report_parser = sub.add_parser("report", help="Generate a Markdown security report")
+    report_parser.add_argument("input")
+    report_parser.add_argument("--root", default=".")
+    report_parser.add_argument("--scope", default="unspecified")
+    report_parser.add_argument("--output")
+
+    bench_parser = sub.add_parser("benchmark", help="Evaluate findings against labeled ground truth")
+    bench_parser.add_argument("--dataset", required=True)
+    bench_parser.add_argument("--results", required=True)
+    bench_parser.add_argument("--output")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.command == "hash-lines":
+            root = Path(args.root).resolve()
+            relative = Path(args.path)
+            if relative.is_absolute() or ".." in relative.parts or "\\" in args.path:
+                raise ValueError("path must be repository-relative without traversal segments")
+            source = (root / relative).resolve(strict=True)
+            source.relative_to(root)
+            print(line_hash_for_file(source, args.start, args.end))
+            return 0
+
+        if args.command == "validate":
+            payload = load_json(args.input)
+            errors = validate_payload(payload, Path(args.root))
+            if errors:
+                for error in errors:
+                    print(f"FAIL: {error}", file=sys.stderr)
+                return 1
+            print(f"PASS: validated {len(payload['findings'])} finding(s) and verified source evidence.")
+            return 0
+
+        if args.command == "dedupe":
+            payload = _load_and_validate(args.input, args.root)
+            output = dict(payload)
+            output["findings"] = deduplicate_findings(payload["findings"])
+            _write_json(output, args.output)
+            return 0
+
+        if args.command == "report":
+            payload = _load_and_validate(args.input, args.root)
+            markdown = render_markdown_report(payload["findings"], args.scope)
+            if args.output:
+                Path(args.output).write_text(markdown, encoding="utf-8")
+            else:
+                sys.stdout.write(markdown)
+            return 0
+
+        if args.command == "benchmark":
+            dataset = load_json(args.dataset)
+            results = load_json(args.results)
+            _write_json(evaluate_benchmark(dataset, results), args.output)
+            return 0
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    return 2

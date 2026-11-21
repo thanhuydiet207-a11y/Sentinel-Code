@@ -130,6 +130,34 @@ claude plugin test .
 
 Model-based evals call a real model and may incur cost. Run them deliberately, not on every CI push. Eval cases test selected behaviors; they do not prove complete vulnerability coverage.
 
+## Sentinel Security Core
+
+The repository includes a dependency-free Python core for deterministic finding validation, source-evidence verification, de-duplication, prioritization, Markdown reporting, and benchmark scoring.
+
+### Finding workflow
+
+1. Ask the AI agent or scanner to produce the shared JSON finding schema.
+2. Calculate a source-line digest without copying the source excerpt into the report:
+   `python3 -m sentinel_core hash-lines --root . --path src/file.py --start 12 --end 14`
+3. Validate schema, repository-relative path, line range, and SHA-256 evidence:
+   `python3 -m sentinel_core validate findings.json --root .`
+4. De-duplicate and rank validated findings:
+   `python3 -m sentinel_core dedupe findings.json --root . --output findings.dedup.json`
+5. Generate a Markdown report:
+   `python3 -m sentinel_core report findings.json --root . --scope "PR #123" --output security-report.md`
+
+The priority score is severity base multiplied by finding confidence. It is an internal triage aid, **not CVSS**, and does not independently determine severity.
+
+### Benchmark workflow
+
+See [benchmarks/README.md](benchmarks/README.md). Run the seed benchmark with:
+
+```bash
+python3 -m sentinel_core benchmark --dataset benchmarks/security-review-v1.json --results benchmarks/results-template.json
+```
+
+The seed set contains 16 synthetic cases, including safe negative controls. It is a regression harness, not a statistically representative security benchmark. Agent results must be collected separately; the checked-in template intentionally makes no accuracy claim.
+
 ## Versioning
 
 This development line is version `1.1.0`. Keep `skills/pr-security-review/` and `.agents/skills/pr-security-review/` byte-for-byte identical. Run `tests/validate-agent-skills.py` after changing either copy.
