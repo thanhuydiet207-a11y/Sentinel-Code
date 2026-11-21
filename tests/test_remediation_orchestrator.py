@@ -162,14 +162,14 @@ class RemediationOrchestratorTests(unittest.TestCase):
                                 "evidence_refs": ["sample.py:1"],
                             }]}]
                         }
-                    }
+                    },
+                    "stage_consensus": {
+                        "adjudicator": {"consensus": [{"finding_id": "F-1"}]}
+                    },
+                    "cross_stage_analysis": [
+                        {"finding_id": "F-1", "cross_stage_disagreement": False}
+                    ],
                 },
-                "stage_consensus": {
-                    "adjudicator": {"consensus": [{"finding_id": "F-1"}]}
-                },
-                "cross_stage_analysis": [
-                    {"finding_id": "F-1", "cross_stage_disagreement": False}
-                ],
                 "evidence_verification": {
                     "adjudicator": {"metadata": {"verified_hash_references": 1}}
                 },
