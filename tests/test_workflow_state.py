@@ -182,6 +182,44 @@ class WorkflowStateTests(unittest.TestCase):
                 migrate_workflow(tmp, "legacy-corrupt")
             self.assertFalse(Path(tmp, "legacy-corrupt.json.schema1.bak").exists())
 
+    def test_workflow_status_must_match_checkpoint_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "status-audit", ["a", "b"], _DIGEST)
+            checkpoint_stage(tmp, "status-audit", "a", "completed")
+            state = load_workflow(tmp, "status-audit")
+            state["status"] = "completed"
+            result = verify_workflow(state)
+            self.assertFalse(result["valid"])
+            self.assertIn("workflow_status_checkpoint_mismatch", result["errors"])
+            path = Path(tmp) / "status-audit.json"
+            path.write_text(json.dumps(state), encoding="utf-8")
+            plan = resume_plan(tmp, "status-audit")
+            self.assertEqual(plan["status"], "blocked")
+            self.assertEqual(plan["reason"], "checkpoint_integrity_invalid")
+
+    def test_failed_stage_status_must_match_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "failed-consistency", ["a"], _DIGEST)
+            checkpoint_stage(tmp, "failed-consistency", "a", "failed", error="failure")
+            state = load_workflow(tmp, "failed-consistency")
+            state["status"] = "running"
+            result = verify_workflow(state)
+            self.assertFalse(result["valid"])
+            self.assertIn("workflow_status_checkpoint_mismatch", result["errors"])
+
+    def test_checkpoint_event_semantics_are_validated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "event-semantics", ["a"], _DIGEST)
+            checkpoint_stage(tmp, "event-semantics", "a", "completed")
+            state = load_workflow(tmp, "event-semantics")
+            event = state["checkpoints"][0]
+            event["error"] = "invalid completed event"
+            event["event_hash"] = hashlib.sha256(json.dumps({k:v for k,v in event.items() if k != "event_hash"}, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+            state["head_hash"] = event["event_hash"]
+            result = verify_workflow(state)
+            self.assertFalse(result["valid"])
+            self.assertIn("checkpoint_0_completed_error_present", result["errors"])
+
     def test_invalid_workflow_id_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
