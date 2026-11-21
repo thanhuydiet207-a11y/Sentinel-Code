@@ -37,7 +37,7 @@ class ExecutionRecoveryTests(unittest.TestCase):
 
     def test_tampered_receipt_blocks(self):
         receipt = self.receipt("failed", "none")
-        receipt["details"]["side_effects"] = "none"
+        receipt["details"]["side_effects"] = "confirmed"
         result = classify_execution_recovery(receipt, [{"stage": "stage-a", "status": "failed"}])
         self.assertEqual(result["action"], "blocked")
 
