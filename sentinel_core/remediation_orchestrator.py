@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import math
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -19,6 +20,25 @@ from .remediation_report import build_remediation_report
 from .remediation_sandbox import run_remediation_sandbox
 from .security_pipeline import run_security_pipeline
 from .workflow_state import create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow
+
+
+def _repository_digest(root: Path, excluded: Path | None = None) -> str:
+    digest = hashlib.sha256()
+    for current, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in {".git", "__pycache__", ".pytest_cache", ".sentinel-workflows"})
+        for name in sorted(files):
+            path = Path(current) / name
+            if excluded is not None and path.resolve().is_relative_to(excluded):
+                continue
+            relative = path.relative_to(root).as_posix()
+            digest.update(relative.encode("utf-8"))
+            try:
+                with path.open("rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(chunk)
+            except OSError as exc:
+                raise ValueError(f"repository snapshot failed for {relative}") from exc
+    return digest.hexdigest()
 
 
 def run_remediation_orchestration(
@@ -53,11 +73,14 @@ def run_remediation_orchestration(
         raise ValueError("policy must be an object")
 
     checkpoint_digest = None
+    restored: dict[str, Any] = {}
     if checkpoint_store is not None:
         if not isinstance(workflow_id, str) or not workflow_id:
             raise ValueError("workflow_id is required when checkpoint_store is supplied")
+        repository_digest = _repository_digest(root, Path(checkpoint_store).resolve())
         checkpoint_inputs = {
-            "findings_payload": findings_payload, "proposal": proposal, "repository_root": str(root),
+            "repository_digest": repository_digest,
+            "findings_payload": findings_payload, "proposal": proposal,
             "baseline_scan": baseline_scan, "candidate_scan": candidate_scan,
             "sandbox_commands": sandbox_commands, "policy": policy, "scanner_names": scanner_names,
             "reviewer_names": reviewer_names, "sealed_evidence": sealed_evidence,
@@ -72,14 +95,17 @@ def run_remediation_orchestration(
         try:
             existing = load_workflow(checkpoint_store, workflow_id)
         except FileNotFoundError:
-            create_workflow(checkpoint_store, workflow_id, ["orchestration"], checkpoint_digest,
-                           metadata={"workflow": "sentinel-remediation-orchestrator-v1"})
+            create_workflow(checkpoint_store, workflow_id,
+                           ["patch_risk", "regression_scan", "orchestration"], checkpoint_digest,
+                           metadata={"workflow": "sentinel-remediation-orchestrator-v1", "repository_digest": repository_digest})
         else:
             if existing.get("input_digest") != checkpoint_digest:
                 raise ValueError("checkpoint input digest mismatch; use a new workflow_id")
             restored = checkpoint_outputs(checkpoint_store, workflow_id, checkpoint_digest)
             if "orchestration" in restored:
                 return restored["orchestration"]
+            if existing.get("stages") != ["patch_risk", "regression_scan", "orchestration"]:
+                raise ValueError("checkpoint workflow stage plan is incompatible; use a new workflow_id")
             if existing.get("status") != "running":
                 raise ValueError("checkpoint workflow is not resumable")
 
@@ -183,10 +209,18 @@ def run_remediation_orchestration(
         stages["patch_validation"] = {"status": "fail", "valid": False, "error": str(exc)}
 
     try:
-        risk = review_patch_risk(proposal)
-        stages["patch_risk"] = {"status": "complete", "risk_score": risk["risk_score"],
-                                "risk_level": risk["risk_level"], "flags": risk["flags"]}
-    except (TypeError, ValueError) as exc:
+        if checkpoint_store is not None and "patch_risk" in restored:
+            cached = restored["patch_risk"]
+            risk, risk_stage = cached["risk"], cached["stage"]
+        else:
+            risk = review_patch_risk(proposal)
+            risk_stage = {"status": "complete", "risk_score": risk["risk_score"],
+                          "risk_level": risk["risk_level"], "flags": risk["flags"]}
+            if checkpoint_store is not None:
+                checkpoint_stage(checkpoint_store, workflow_id, "patch_risk", "completed",
+                                 {"risk": risk, "stage": risk_stage})
+        stages["patch_risk"] = risk_stage
+    except (TypeError, ValueError, KeyError) as exc:
         risk = None
         stages["patch_risk"] = {"status": "not_run", "error": str(exc)}
 
@@ -209,9 +243,17 @@ def run_remediation_orchestration(
 
     if baseline_scan is not None and candidate_scan is not None:
         try:
-            scan = compare_scan_snapshots(baseline_scan, candidate_scan)
-            stages["regression_scan"] = {"status": scan["status"], "summary": scan["summary"]}
-        except (TypeError, ValueError) as exc:
+            if checkpoint_store is not None and "regression_scan" in restored:
+                cached = restored["regression_scan"]
+                scan, scan_stage = cached["scan"], cached["stage"]
+            else:
+                scan = compare_scan_snapshots(baseline_scan, candidate_scan)
+                scan_stage = {"status": scan["status"], "summary": scan["summary"]}
+                if checkpoint_store is not None:
+                    checkpoint_stage(checkpoint_store, workflow_id, "regression_scan", "completed",
+                                    {"scan": scan, "stage": scan_stage})
+            stages["regression_scan"] = scan_stage
+        except (TypeError, ValueError, KeyError) as exc:
             scan = {"status": "not_run", "error": str(exc)}
             stages["regression_scan"] = {"status": "not_run", "error": str(exc)}
     else:

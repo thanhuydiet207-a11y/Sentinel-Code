@@ -174,6 +174,34 @@ class RemediationOrchestratorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "input digest mismatch"):
                 run_remediation_orchestration(findings, changed, root, **args)
 
+    @patch("sentinel_core.remediation_orchestrator.run_remediation_sandbox")
+    def test_checkpointed_stages_store_risk_and_scan_outputs(self, sandbox_runner):
+        sandbox_runner.return_value = {
+            "status": "pass", "commands": [{"status": "pass"}],
+            "original_repository_modified": False, "os_level_isolation": False,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, findings, proposal = self._fixture(root)
+            store = root / "checkpoint-store"
+            run_remediation_orchestration(
+                findings, proposal, root,
+                baseline_scan={"findings": []}, candidate_scan={"findings": []},
+                sandbox_commands=[["python", "--version"]],
+                policy={"policy_id": "test", "max_risk_score": 100,
+                        "require_evidence_verified": False, "required_scanners": [],
+                        "required_reviewers": []},
+                checkpoint_store=store, workflow_id="stage-resume-test",
+            )
+            from sentinel_core.workflow_state import load_workflow, checkpoint_outputs, verify_workflow
+            state = load_workflow(store, "stage-resume-test")
+            self.assertTrue(verify_workflow(state)["valid"])
+            outputs = checkpoint_outputs(store, "stage-resume-test")
+            self.assertIn("patch_risk", outputs)
+            self.assertIn("regression_scan", outputs)
+            self.assertIn("orchestration", outputs)
+            self.assertEqual(state["status"], "completed")
+
     @patch("sentinel_core.remediation_orchestrator.run_security_pipeline")
     @patch("sentinel_core.remediation_orchestrator.run_remediation_sandbox")
     def test_opt_in_ai_pipeline_supplies_actual_scanner_and_reviewer_evidence(self, sandbox_runner, security_runner):
