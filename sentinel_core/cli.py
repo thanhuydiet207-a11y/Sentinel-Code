@@ -11,6 +11,7 @@ from .core import deduplicate_findings, line_hash_for_file, load_json, render_ma
 from .scanner_adapters import SUPPORTED, import_scanner_results
 from .correlation import correlate_findings
 from .false_positive import analyze_findings
+from .ai_review import aggregate_reviews
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -66,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     triage_parser = sub.add_parser("triage", help="Flag findings with weak evidence for manual review")
     triage_parser.add_argument("input")
     triage_parser.add_argument("--output")
+
+    consensus_parser = sub.add_parser("review-consensus", help="Aggregate offline AI reviewer outputs without suppressing findings")
+    consensus_parser.add_argument("findings")
+    consensus_parser.add_argument("reviews")
+    consensus_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -127,6 +133,12 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "triage":
             _write_json(analyze_findings(load_json(args.input)), args.output)
+            return 0
+
+        if args.command == "review-consensus":
+            findings_data = load_json(args.findings)
+            reviews_data = load_json(args.reviews)
+            _write_json(aggregate_reviews(findings_data, reviews_data), args.output)
             return 0
 
         if args.command == "import-scanner":

@@ -148,6 +148,16 @@ The repository includes a dependency-free Python core for deterministic finding 
 
 The priority score is severity base multiplied by finding confidence. It is an internal triage aid, **not CVSS**, and does not independently determine severity.
 
+### Offline AI review consensus
+
+Sentinel-Code can aggregate imported AI reviewer verdicts without provider credentials or network calls:
+
+```bash
+python3 -m sentinel_core review-consensus findings.json reviews.json --output consensus.json
+```
+
+This phase summarizes reviewer votes and disagreements; it never automatically suppresses findings. See [AI review consensus](docs/AI-REVIEW-CONSENSUS.md) for the input contract and limitations.
+
 ### Benchmark workflow
 
 See [benchmarks/README.md](benchmarks/README.md). Run the seed benchmark with:
