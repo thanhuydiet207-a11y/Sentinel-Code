@@ -96,7 +96,7 @@ def run_remediation_orchestration(
             existing = load_workflow(checkpoint_store, workflow_id)
         except FileNotFoundError:
             create_workflow(checkpoint_store, workflow_id,
-                           ["patch_risk", "regression_scan", "orchestration"], checkpoint_digest,
+                           ["patch_validation", "patch_risk", "sandbox", "regression_scan", "provenance", "orchestration"], checkpoint_digest,
                            metadata={"workflow": "sentinel-remediation-orchestrator-v1", "repository_digest": repository_digest})
         else:
             if existing.get("input_digest") != checkpoint_digest:
@@ -104,7 +104,7 @@ def run_remediation_orchestration(
             restored = checkpoint_outputs(checkpoint_store, workflow_id, checkpoint_digest)
             if "orchestration" in restored:
                 return restored["orchestration"]
-            if existing.get("stages") != ["patch_risk", "regression_scan", "orchestration"]:
+            if existing.get("stages") != ["patch_validation", "patch_risk", "sandbox", "regression_scan", "provenance", "orchestration"]:
                 raise ValueError("checkpoint workflow stage plan is incompatible; use a new workflow_id")
             if existing.get("status") != "running":
                 raise ValueError("checkpoint workflow is not resumable")
@@ -199,14 +199,26 @@ def run_remediation_orchestration(
         stages["ai_adjudication"] = {"status": "not_run", "error": "ai_providers_not_supplied"}
 
     try:
-        validation = validate_patch_proposal(proposal, validation_findings, root)
-        stages["patch_validation"] = {
-            "status": "pass", "valid": True, "candidate_sha256": validation["candidate_sha256"],
-            "path": validation["path"], "file_modified": False,
-        }
-    except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
+        if checkpoint_store is not None and "patch_validation" in restored:
+            cached = restored["patch_validation"]
+            validation, validation_stage = cached["validation"], cached["stage"]
+        else:
+            validation = validate_patch_proposal(proposal, validation_findings, root)
+            validation_stage = {
+                "status": "pass", "valid": True, "candidate_sha256": validation["candidate_sha256"],
+                "path": validation["path"], "file_modified": False,
+            }
+            if checkpoint_store is not None:
+                checkpoint_stage(checkpoint_store, workflow_id, "patch_validation", "completed",
+                                 {"validation": validation, "stage": validation_stage})
+        stages["patch_validation"] = validation_stage
+    except (OSError, UnicodeError, ValueError, RuntimeError, TypeError, KeyError) as exc:
         validation = None
-        stages["patch_validation"] = {"status": "fail", "valid": False, "error": str(exc)}
+        validation_stage = {"status": "fail", "valid": False, "error": str(exc)}
+        stages["patch_validation"] = validation_stage
+        if checkpoint_store is not None and "patch_validation" not in restored:
+            checkpoint_stage(checkpoint_store, workflow_id, "patch_validation", "completed",
+                             {"validation": None, "stage": validation_stage})
 
     try:
         if checkpoint_store is not None and "patch_risk" in restored:
@@ -224,22 +236,35 @@ def run_remediation_orchestration(
         risk = None
         stages["patch_risk"] = {"status": "not_run", "error": str(exc)}
 
-    if validation is not None and isinstance(sandbox_commands, list) and sandbox_commands:
+    if checkpoint_store is not None and "sandbox" in restored:
+        sandbox = restored["sandbox"]["sandbox"]
+        sandbox_stage = restored["sandbox"]["stage"]
+        stages["sandbox"] = sandbox_stage
+    elif validation is not None and isinstance(sandbox_commands, list) and sandbox_commands:
         try:
             sandbox = run_remediation_sandbox(
                 root, validation["path"], validation["candidate_content"],
                 sandbox_commands, timeout_seconds=timeout_seconds,
             )
-            stages["sandbox"] = {"status": sandbox["status"], "commands": sandbox["commands"],
-                                 "original_repository_modified": sandbox["original_repository_modified"],
-                                 "os_level_isolation": sandbox["os_level_isolation"]}
+            sandbox_stage = {"status": sandbox["status"], "commands": sandbox["commands"],
+                            "original_repository_modified": sandbox["original_repository_modified"],
+                            "os_level_isolation": sandbox["os_level_isolation"]}
+            stages["sandbox"] = sandbox_stage
         except (OSError, ValueError, RuntimeError) as exc:
             sandbox = {"status": "not_run", "error": str(exc)}
-            stages["sandbox"] = {"status": "not_run", "error": str(exc)}
+            sandbox_stage = {"status": "not_run", "error": str(exc)}
+            stages["sandbox"] = sandbox_stage
+        if checkpoint_store is not None:
+            checkpoint_stage(checkpoint_store, workflow_id, "sandbox", "completed",
+                             {"sandbox": sandbox, "stage": sandbox_stage})
     else:
         reason = "patch_validation_failed" if validation is None else "sandbox_commands_not_supplied"
         sandbox = {"status": "not_run", "error": reason}
-        stages["sandbox"] = {"status": "not_run", "error": reason}
+        sandbox_stage = {"status": "not_run", "error": reason}
+        stages["sandbox"] = sandbox_stage
+        if checkpoint_store is not None:
+            checkpoint_stage(checkpoint_store, workflow_id, "sandbox", "completed",
+                             {"sandbox": sandbox, "stage": sandbox_stage})
 
     if baseline_scan is not None and candidate_scan is not None:
         try:
@@ -260,21 +285,34 @@ def run_remediation_orchestration(
         scan = {"status": "not_run", "error": "baseline_or_candidate_scan_missing"}
         stages["regression_scan"] = {"status": "not_run", "error": scan["error"]}
 
-    if sealed_evidence is not None:
+    if checkpoint_store is not None and "provenance" in restored:
+        provenance = restored["provenance"]["provenance"]
+        provenance_status = restored["provenance"]["status"]
+        stages["provenance"] = restored["provenance"]["stage"]
+    elif sealed_evidence is not None:
         try:
             provenance = verify_evidence_bundle(sealed_evidence, root)
             provenance_status = "verified" if provenance["valid"] else "invalid"
-            stages["provenance"] = {"status": provenance_status,
-                                    "bundle_hash_valid": provenance["bundle_hash_valid"],
-                                    "artifact_checks": provenance["artifact_checks"]}
+            provenance_stage = {"status": provenance_status,
+                               "bundle_hash_valid": provenance["bundle_hash_valid"],
+                               "artifact_checks": provenance["artifact_checks"]}
+            stages["provenance"] = provenance_stage
         except (OSError, TypeError, ValueError, RuntimeError) as exc:
             provenance = {"valid": False, "integrity": "invalid", "error": str(exc)}
             provenance_status = "invalid"
-            stages["provenance"] = {"status": "invalid", "error": str(exc)}
+            provenance_stage = {"status": "invalid", "error": str(exc)}
+            stages["provenance"] = provenance_stage
+        if checkpoint_store is not None:
+            checkpoint_stage(checkpoint_store, workflow_id, "provenance", "completed",
+                             {"provenance": provenance, "status": provenance_status, "stage": stages["provenance"]})
     else:
         provenance = {"valid": False, "integrity": "not_run"}
         provenance_status = "not_run"
-        stages["provenance"] = {"status": "not_run", "error": "sealed_evidence_not_supplied"}
+        provenance_stage = {"status": "not_run", "error": "sealed_evidence_not_supplied"}
+        stages["provenance"] = provenance_stage
+        if checkpoint_store is not None:
+            checkpoint_stage(checkpoint_store, workflow_id, "provenance", "completed",
+                             {"provenance": provenance, "status": provenance_status, "stage": provenance_stage})
 
     scanners = resolved_scanners
     reviewers = resolved_reviewers

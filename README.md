@@ -306,3 +306,10 @@ sentinel-security workflow-resume-plan --store .sentinel-workflows \
 ```
 
 See [Phase 4K checkpoint/resume docs](docs/phase4k-persistent-workflow-resume.md). The checkpoint engine is a persistence primitive, not yet automatic orchestration around all Phase 4I stages. Failed runs are blocked from automatic resume; external side effects require caller revalidation.
+
+
+## Phase 4O: Orchestrator stage checkpoint coverage
+
+Checkpoint-enabled orchestration now stores verified outputs for patch validation, patch risk, sandbox, regression comparison, provenance, and the final result. A matching workflow can reuse these outputs; mismatched repository or workflow inputs are rejected. Earlier checkpoint stage plans require a new workflow ID.
+
+See [Phase 4O checkpoint coverage and safety boundaries](docs/phase4o-stage-checkpoint-coverage.md). Cached sandbox results are historical evidence, not proof that external side effects or dependencies remain unchanged. Checkpoint files may contain candidate patch content and must be treated as sensitive.
