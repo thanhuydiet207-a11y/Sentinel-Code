@@ -277,7 +277,7 @@ def migrate_workflow(store: str | Path, workflow_id: str) -> dict:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(state, stream, ensure_ascii=False, indent=2)
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, backup)
