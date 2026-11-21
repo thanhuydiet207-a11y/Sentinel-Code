@@ -79,7 +79,7 @@ class AuditTrailTests(unittest.TestCase):
             {"type": "approval_requested"}, {"type": "rejected"},
         ]
         result = lifecycle_status(events)
-        self.assertIn("approval_requested_must_be_appear_at_most_once", result["missing_requirements"])
+        self.assertIn("approval_requested_must_appear_at_most_once", result["missing_requirements"])
 
     def test_duplicate_decisions_invalid(self):
         events = [
