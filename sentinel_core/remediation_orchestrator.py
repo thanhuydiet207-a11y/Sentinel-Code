@@ -240,9 +240,17 @@ def run_remediation_orchestration(
 
     if baseline_scan is not None and candidate_scan is not None:
         try:
-            scan = compare_scan_snapshots(baseline_scan, candidate_scan)
-            stages["regression_scan"] = {"status": scan["status"], "summary": scan["summary"]}
-        except (TypeError, ValueError) as exc:
+            if checkpoint_store is not None and "regression_scan" in restored:
+                cached = restored["regression_scan"]
+                scan, scan_stage = cached["scan"], cached["stage"]
+            else:
+                scan = compare_scan_snapshots(baseline_scan, candidate_scan)
+                scan_stage = {"status": scan["status"], "summary": scan["summary"]}
+                if checkpoint_store is not None:
+                    checkpoint_stage(checkpoint_store, workflow_id, "regression_scan", "completed",
+                                    {"scan": scan, "stage": scan_stage})
+            stages["regression_scan"] = scan_stage
+        except (TypeError, ValueError, KeyError) as exc:
             scan = {"status": "not_run", "error": str(exc)}
             stages["regression_scan"] = {"status": "not_run", "error": str(exc)}
     else:
