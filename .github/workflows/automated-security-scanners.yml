@@ -1,0 +1,54 @@
+name: Automated security scanners
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "**.py"
+      - "**.js"
+      - "**.ts"
+      - "**.sh"
+      - "**.yml"
+      - "**.yaml"
+      - "**.json"
+      - "sentinel_core/**"
+      - "scripts/run-security-scanners.sh"
+  schedule:
+    - cron: "23 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Install Gitleaks
+        run: |
+          version="8.24.2"
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+      - name: Install Trivy
+        run: |
+          version="0.58.2"
+          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${version}/trivy_${version}_Linux-64bit.tar.gz" -o /tmp/trivy.tar.gz
+          tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+          sudo install /tmp/trivy /usr/local/bin/trivy
+      - name: Run scanners and normalize findings
+        run: bash scripts/run-security-scanners.sh "$RUNNER_TEMP/sentinel-results"
+      - name: Upload scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-security-scan
+          path: ${{ runner.temp }}/sentinel-results/
+          if-no-files-found: warn
+          retention-days: 14
