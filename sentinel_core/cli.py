@@ -61,7 +61,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     correlate_parser = sub.add_parser("correlate", help="Correlate findings from multiple scanner JSON packages")
     correlate_parser.add_argument("inputs", nargs="+")
-    correlate_parser.add_argument("--output")\n\n    triage_parser = sub.add_parser("triage", help="Flag findings with weak evidence for manual review")
+    correlate_parser.add_argument("--output")
+
+    triage_parser = sub.add_parser("triage", help="Flag findings with weak evidence for manual review")
     triage_parser.add_argument("input")
     triage_parser.add_argument("--output")
 
