@@ -41,6 +41,22 @@ class ProviderAdapterTests(unittest.TestCase):
         self.assertEqual([r["provider"] for r in result["reviewers"]], ["openai", "anthropic", "gemini"])
         self.assertTrue(all(r["reviews"][0]["finding_id"] == "F-1" for r in result["reviewers"]))
 
+    def test_openai_adapter_normalizes_and_validates(self):
+        with patch.dict(os.environ, {"SENTINEL_OPENAI_API_KEY": "test-secret"}, clear=False):
+            result = run_provider_reviews(FINDINGS, ["openai"], self.fake_transport)
+        self.assertEqual(result["reviewers"][0]["provider"], "openai")
+        self.assertEqual(result["reviewers"][0]["reviews"][0]["finding_id"], "F-1")
+
+    def test_anthropic_adapter_normalizes_and_validates(self):
+        with patch.dict(os.environ, {"SENTINEL_ANTHROPIC_API_KEY": "test-secret"}, clear=False):
+            result = run_provider_reviews(FINDINGS, ["anthropic"], self.fake_transport)
+        self.assertEqual(result["reviewers"][0]["provider"], "anthropic")
+
+    def test_gemini_adapter_normalizes_and_validates(self):
+        with patch.dict(os.environ, {"SENTINEL_GEMINI_API_KEY": "test-secret"}, clear=False):
+            result = run_provider_reviews(FINDINGS, ["gemini"], self.fake_transport)
+        self.assertEqual(result["reviewers"][0]["provider"], "gemini")
+
     def test_missing_api_key_fails_before_transport(self):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "API_KEY is required"):
@@ -50,7 +66,7 @@ class ProviderAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicates"):
             run_provider_reviews(FINDINGS, ["openai", "openai"], self.fake_transport)
 
-    def test_invalid_response_rejected(self):
+    def test_invalid_provider_response_rejected(self):
         with self.assertRaises(ValueError):
             _parse_review_response('{"unexpected": []}')
 
