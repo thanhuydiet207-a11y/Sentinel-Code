@@ -1,0 +1,70 @@
+{
+  "benchmark_version": "1.0",
+  "agent": "replace-with-agent-and-model-version",
+  "cases": [
+    {
+      "case_id": "JS-SQLI-001",
+      "findings": []
+    },
+    {
+      "case_id": "JS-SQLI-SAFE-001",
+      "findings": []
+    },
+    {
+      "case_id": "JS-IDOR-001",
+      "findings": []
+    },
+    {
+      "case_id": "JS-IDOR-SAFE-001",
+      "findings": []
+    },
+    {
+      "case_id": "PY-CMDI-001",
+      "findings": []
+    },
+    {
+      "case_id": "PY-CMDI-SAFE-001",
+      "findings": []
+    },
+    {
+      "case_id": "PY-SSRF-001",
+      "findings": []
+    },
+    {
+      "case_id": "PY-SSRF-SAFE-001",
+      "findings": []
+    },
+    {
+      "case_id": "JS-XSS-001",
+      "findings": []
+    },
+    {
+      "case_id": "JS-XSS-SAFE-001",
+      "findings": []
+    },
+    {
+      "case_id": "PY-PATH-TRAVERSAL-001",
+      "findings": []
+    },
+    {
+      "case_id": "PY-PATH-TRAVERSAL-SAFE-001",
+      "findings": []
+    },
+    {
+      "case_id": "JAVA-XXE-001",
+      "findings": []
+    },
+    {
+      "case_id": "JAVA-XXE-SAFE-001",
+      "findings": []
+    },
+    {
+      "case_id": "PY-WEAK-HASH-001",
+      "findings": []
+    },
+    {
+      "case_id": "PY-WEAK-HASH-SAFE-001",
+      "findings": []
+    }
+  ]
+}
