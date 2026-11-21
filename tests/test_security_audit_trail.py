@@ -30,3 +30,33 @@ class AuditTrailTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_requires_timezone_aware_timestamp(self):
+        with self.assertRaises(ValueError):
+            build_audit_trail("s", [{"type":"created","timestamp":"2026-01-01T00:00:00"}])
+
+    def test_rejects_out_of_order_timestamps(self):
+        with self.assertRaises(ValueError):
+            build_audit_trail("s", [
+                {"type":"created","timestamp":"2026-01-01T00:01:00Z"},
+                {"type":"patch_proposed","timestamp":"2026-01-01T00:00:00Z"}])
+
+    def test_approval_requires_ordered_prerequisites(self):
+        events=[{"type":"created"},{"type":"approved"},{"type":"approval_requested"},
+                {"type":"evidence_verified"},{"type":"report_generated"}]
+        result=lifecycle_status(events)
+        self.assertEqual(result["status"],"incomplete")
+        self.assertIn("approval_requested_before_approved",result["missing_requirements"])
+
+    def test_closed_event_must_be_final_and_unique(self):
+        events=[{"type":"created"},{"type":"approval_requested"},{"type":"rejected"},
+                {"type":"closed"},{"type":"review_completed"}]
+        result=lifecycle_status(events)
+        self.assertIn("closed_must_be_final_and_unique",result["missing_requirements"])
+
+    def test_verifier_reports_lifecycle_failure(self):
+        trail=build_audit_trail("s", [{"type":"created","timestamp":"2026-01-01T00:00:00Z"},
+            {"type":"approved","timestamp":"2026-01-01T00:01:00Z"}])
+        result=verify_audit_trail(trail)
+        self.assertFalse(result["valid"])
+        self.assertIn("lifecycle_approval_requested_before_approved",result["errors"])
