@@ -188,7 +188,7 @@ def resume_plan(store: str | Path, workflow_id: str, input_digest: str | None = 
     return {"workflow_id": workflow_id, "status": state["status"], "integrity": "verified",
             "completed_stages": completed, "failed_stages": failed, "skipped_stages": skipped,
             "remaining_stages": remaining, "next_stage": remaining[0] if remaining else None,
-            "safe_to_resume": state["status"] in {"running", "failed"} and not failed,
+            "safe_to_resume": state["status"] == "running" and not failed,
             "limitations": state.get("limitations", [])}
 
 
