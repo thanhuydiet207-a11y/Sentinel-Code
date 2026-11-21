@@ -139,6 +139,25 @@ class RemediationOrchestratorTests(unittest.TestCase):
             sandbox_runner.assert_not_called()
 
 
+    def test_missing_regression_inputs_are_checkpointed_and_workflow_completes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, findings, proposal = self._fixture(root)
+            store = root / "checkpoint-store"
+            result = run_remediation_orchestration(
+                findings, proposal, root,
+                policy={"policy_id": "test", "require_evidence_verified": False},
+                checkpoint_store=store, workflow_id="missing-scan",
+            )
+            from sentinel_core.workflow_state import load_workflow, checkpoint_outputs, verify_workflow
+            state = load_workflow(store, "missing-scan")
+            outputs = checkpoint_outputs(store, "missing-scan")
+            self.assertTrue(verify_workflow(state)["valid"])
+            self.assertEqual(state["status"], "completed")
+            self.assertIn("regression_scan", outputs)
+            self.assertEqual(outputs["regression_scan"]["scan"]["status"], "not_run")
+            self.assertEqual(result["stages"]["regression_scan"]["status"], "not_run")
+
     @patch("sentinel_core.remediation_orchestrator.run_remediation_sandbox")
     def test_checkpointed_completed_result_is_reused(self, sandbox_runner):
         sandbox_runner.return_value = {
