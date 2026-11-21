@@ -50,6 +50,23 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(summary["case_coverage"], 0.5)
         self.assertEqual(summary["false_negative"], 1)
 
+    def test_no_predictions_do_not_receive_perfect_precision(self):
+        results = {"cases": [
+            {"case_id": "vuln", "findings": []},
+            {"case_id": "safe", "findings": []},
+        ]}
+        summary = evaluate_benchmark(sample_dataset(), results)["summary"]
+        self.assertIsNone(summary["precision"])
+        self.assertEqual(summary["recall"], 0.0)
+        self.assertEqual(summary["f1"], 0.0)
+        self.assertEqual(summary["safe_case_false_positive_rate"], 0.0)
+
+    def test_unscored_cases_are_listed(self):
+        summary = evaluate_benchmark(sample_dataset(), {"cases": []})["summary"]
+        self.assertEqual(summary["unscored_case_ids"], ["safe", "vuln"])
+        self.assertIsNone(summary["precision"])
+        self.assertEqual(summary["recall"], 0.0)
+
     def test_duplicate_predictions_are_not_double_counted(self):
         prediction = {"rule_id": "CWE-89/SQLI", "path": "src/a.js", "start_line": 4, "end_line": 5}
         results = {"cases": [

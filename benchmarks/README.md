@@ -33,7 +33,7 @@ From the repository root:
 python3 -m sentinel_core benchmark --dataset benchmarks/security-review-v1.json --results benchmarks/results-template.json
 ```
 
-Metrics include precision, recall, F1, safe-case false-positive rate, case coverage, severity accuracy, per-CWE results, and matched/false-positive/missed finding details.
+Metrics include precision, recall, F1, safe-case false-positive rate, case coverage, severity accuracy, per-CWE results, and matched/false-positive/missed finding details. If no predictions were submitted, precision is `null` (undefined), not 100%. If there are no severity comparisons, severity accuracy is also `null`. The report lists case IDs that were not scored.
 
 Missing vulnerable cases count as false negatives. Missing safe cases do not count as a clean result; they reduce case coverage. Always report coverage beside model scores.
 

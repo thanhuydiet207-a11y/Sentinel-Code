@@ -13,10 +13,14 @@ def _valid_finding(item: Any) -> bool:
     if not isinstance(item.get("path"), str) or not item["path"]:
         return False
     start, end = item.get("start_line"), item.get("end_line")
-    return (
-        isinstance(start, int) and not isinstance(start, bool) and start > 0
-        and isinstance(end, int) and not isinstance(end, bool) and end >= start
-    )
+    if not (isinstance(start, int) and not isinstance(start, bool) and start > 0
+            and isinstance(end, int) and not isinstance(end, bool) and end >= start):
+        return False
+    if "severity" in item and item["severity"] not in ("critical", "high", "medium", "low", "info"):
+        return False
+    if "category" in item and not isinstance(item["category"], str):
+        return False
+    return True
 
 
 def _dedupe(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -38,8 +42,9 @@ def _matches(candidate: dict[str, Any], expected: dict[str, Any]) -> bool:
     return max(candidate["start_line"], expected["start_line"]) <= min(candidate["end_line"], expected["end_line"])
 
 
-def _ratio(numerator: int, denominator: int) -> float:
-    return round(numerator / denominator, 4) if denominator else 1.0
+def _ratio(numerator: int, denominator: int) -> float | None:
+    """Return None when the metric has no denominator; never invent a perfect score."""
+    return round(numerator / denominator, 4) if denominator else None
 
 
 def evaluate_benchmark(dataset: dict[str, Any], results: dict[str, Any]) -> dict[str, Any]:
@@ -48,6 +53,8 @@ def evaluate_benchmark(dataset: dict[str, Any], results: dict[str, Any]) -> dict
     if not isinstance(results, dict) or not isinstance(results.get("cases"), list):
         raise ValueError("results must contain a cases array")
 
+    if not dataset["cases"]:
+        raise ValueError("benchmark dataset must contain at least one case")
     case_by_id: dict[str, dict[str, Any]] = {}
     for case in dataset["cases"]:
         if not isinstance(case, dict) or not isinstance(case.get("id"), str):
@@ -129,14 +136,24 @@ def evaluate_benchmark(dataset: dict[str, Any], results: dict[str, Any]) -> dict
 
     precision = _ratio(true_positive, true_positive + false_positive)
     recall = _ratio(true_positive, true_positive + false_negative)
-    f1 = round(2 * precision * recall / (precision + recall), 4) if precision + recall else 0.0
+    if precision is None and recall is None:
+        f1 = None
+    elif precision is None or recall is None or precision + recall == 0:
+        f1 = 0.0
+    else:
+        f1 = round(2 * precision * recall / (precision + recall), 4)
     category_metrics = {}
     for category, counts in sorted(categories.items()):
         p = _ratio(counts["tp"], counts["tp"] + counts["fp"])
         r = _ratio(counts["tp"], counts["tp"] + counts["fn"])
+        if p is None and r is None:
+            category_f1 = None
+        elif p is None or r is None or p + r == 0:
+            category_f1 = 0.0
+        else:
+            category_f1 = round(2 * p * r / (p + r), 4)
         category_metrics[category] = {
-            **counts, "precision": p, "recall": r,
-            "f1": round(2 * p * r / (p + r), 4) if p + r else 0.0,
+            **counts, "precision": p, "recall": r, "f1": category_f1,
         }
 
     return {
@@ -145,6 +162,7 @@ def evaluate_benchmark(dataset: dict[str, Any], results: dict[str, Any]) -> dict
         "summary": {
             "cases_total": len(case_by_id),
             "cases_scored": len(result_by_id),
+            "unscored_case_ids": sorted(set(case_by_id) - set(result_by_id)),
             "case_coverage": _ratio(len(result_by_id), len(case_by_id)),
             "true_positive": true_positive,
             "false_positive": false_positive,

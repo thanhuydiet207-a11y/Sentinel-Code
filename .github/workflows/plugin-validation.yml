@@ -48,8 +48,11 @@ jobs:
         run: python3 tests/validate-security-benchmark.py
       - name: Run Security Core unit tests
         run: python3 -m unittest discover -s tests -p "test_security_*.py" -v
-      - name: Smoke-test Security Core CLI
-        run: python3 -m sentinel_core --help
+      - name: Smoke-test Security Core CLI and empty benchmark semantics
+        run: |
+          python3 -m sentinel_core --help
+          python3 -m sentinel_core benchmark --dataset benchmarks/security-review-v1.json --results benchmarks/results-template.json --output /tmp/sentinel-benchmark.json
+          python3 -c 'import json; r=json.load(open("/tmp/sentinel-benchmark.json")); s=r["summary"]; assert s["cases_total"] == 16; assert s["cases_scored"] == 16; assert s["precision"] is None; assert s["recall"] == 0.0; assert s["f1"] == 0.0'
 
   mod-runtime-tests:
     runs-on: ubuntu-latest

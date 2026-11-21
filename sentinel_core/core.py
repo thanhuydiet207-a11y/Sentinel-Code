@@ -156,11 +156,20 @@ def priority_score(finding: dict[str, Any]) -> float:
     """Transparent triage score, not CVSS and not a replacement for severity."""
     severity = finding.get("severity")
     confidence = finding.get("confidence")
-    if severity not in SEVERITY_BASE or isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+    if not isinstance(severity, str) or severity not in SEVERITY_BASE:
+        return 0.0
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
         return 0.0
     if not math.isfinite(confidence) or not 0 <= confidence <= 1:
         return 0.0
     return round(SEVERITY_BASE[severity] * confidence, 2)
+
+
+def _confidence_value(finding: dict[str, Any]) -> float:
+    confidence = finding.get("confidence", 0)
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not math.isfinite(confidence):
+        return 0.0
+    return float(confidence)
 
 
 def finding_fingerprint(finding: dict[str, Any]) -> str:
@@ -182,8 +191,8 @@ def deduplicate_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]
         fingerprint = finding_fingerprint(finding)
         duplicate_counts[fingerprint] = duplicate_counts.get(fingerprint, 0) + 1
         current = selected.get(fingerprint)
-        candidate_rank = (priority_score(finding), float(finding.get("confidence", 0) or 0))
-        current_rank = (priority_score(current), float(current.get("confidence", 0) or 0)) if current else (-1, -1)
+        candidate_rank = (priority_score(finding), _confidence_value(finding))
+        current_rank = (priority_score(current), _confidence_value(current)) if current else (-1, -1)
         if current is None or candidate_rank > current_rank:
             selected[fingerprint] = dict(finding)
     output = []
