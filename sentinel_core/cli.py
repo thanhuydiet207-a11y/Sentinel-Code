@@ -22,6 +22,7 @@ from .regression import compare_scan_snapshots
 from .patch_risk import review_patch_risk
 from .remediation_report import build_remediation_report
 from .provenance import seal_evidence_bundle, verify_evidence_bundle
+from .audit_trail import build_audit_trail, verify_audit_trail, lifecycle_status
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -121,6 +122,19 @@ def build_parser() -> argparse.ArgumentParser:
     risk_parser = sub.add_parser("review-patch-risk", help="Estimate advisory risk signals from a proposed unified diff")
     risk_parser.add_argument("proposal")
     risk_parser.add_argument("--output")
+
+    audit_parser = sub.add_parser("audit-trail", help="Build a hash-chained remediation event trail")
+    audit_parser.add_argument("events")
+    audit_parser.add_argument("--session-id", required=True)
+    audit_parser.add_argument("--output")
+
+    verify_audit_parser = sub.add_parser("verify-audit-trail", help="Verify audit event hash chain")
+    verify_audit_parser.add_argument("trail")
+    verify_audit_parser.add_argument("--output")
+
+    lifecycle_parser = sub.add_parser("audit-lifecycle", help="Check remediation lifecycle prerequisites")
+    lifecycle_parser.add_argument("events")
+    lifecycle_parser.add_argument("--output")
 
     seal_parser = sub.add_parser("seal-evidence", help="Hash evidence artifacts and seal a provenance bundle")
     seal_parser.add_argument("bundle")
@@ -265,6 +279,27 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print("Candidate tests completed in a temporary workspace.", file=sys.stderr)
             return 0 if result["status"] == "pass" else 1
+
+        if args.command == "audit-trail":
+            events = load_json(args.events)
+            result = build_audit_trail(args.session_id, events)
+            _write_json(result, args.output)
+            print(f"Audit trail events: {result['event_count']}", file=sys.stderr)
+            return 0
+
+        if args.command == "verify-audit-trail":
+            trail = load_json(args.trail)
+            result = verify_audit_trail(trail)
+            _write_json(result, args.output)
+            print(f"Audit integrity: {result['integrity']}", file=sys.stderr)
+            return 0 if result["valid"] else 1
+
+        if args.command == "audit-lifecycle":
+            events = load_json(args.events)
+            result = lifecycle_status(events)
+            _write_json(result, args.output)
+            print(f"Lifecycle: {result['status']}", file=sys.stderr)
+            return 0 if result["status"] == "complete" else 1
 
         if args.command == "seal-evidence":
             bundle = load_json(args.bundle)
