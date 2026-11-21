@@ -12,7 +12,7 @@ from .scanner_adapters import SUPPORTED, import_scanner_results
 from .correlation import correlate_findings
 from .false_positive import analyze_findings
 from .ai_review import aggregate_reviews
-from .provider_adapters import run_provider_reviews
+from .provider_adapters import run_provider_reviews\nfrom .evidence_verification import verify_ai_evidence
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -78,6 +78,12 @@ def build_parser() -> argparse.ArgumentParser:
     consensus_parser.add_argument("findings")
     consensus_parser.add_argument("reviews")
     consensus_parser.add_argument("--output")
+
+    verify_parser = sub.add_parser("verify-ai-evidence", help="Verify AI reviewer evidence references against local source")
+    verify_parser.add_argument("findings")
+    verify_parser.add_argument("reviews")
+    verify_parser.add_argument("--root", default=".")
+    verify_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
