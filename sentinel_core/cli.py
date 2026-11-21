@@ -21,6 +21,7 @@ from .remediation_sandbox import run_remediation_sandbox
 from .regression import compare_scan_snapshots
 from .patch_risk import review_patch_risk
 from .remediation_report import build_remediation_report
+from .provenance import seal_evidence_bundle, verify_evidence_bundle
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -120,6 +121,16 @@ def build_parser() -> argparse.ArgumentParser:
     risk_parser = sub.add_parser("review-patch-risk", help="Estimate advisory risk signals from a proposed unified diff")
     risk_parser.add_argument("proposal")
     risk_parser.add_argument("--output")
+
+    seal_parser = sub.add_parser("seal-evidence", help="Hash evidence artifacts and seal a provenance bundle")
+    seal_parser.add_argument("bundle")
+    seal_parser.add_argument("--root", default=".")
+    seal_parser.add_argument("--output")
+
+    verify_provenance_parser = sub.add_parser("verify-evidence", help="Verify sealed artifact and bundle hashes")
+    verify_provenance_parser.add_argument("sealed")
+    verify_provenance_parser.add_argument("--root", default=".")
+    verify_provenance_parser.add_argument("--output")
 
     remediation_parser = sub.add_parser("remediation-report", help="Build a remediation decision report from supplied evidence artifacts")
     remediation_parser.add_argument("bundle")
@@ -254,6 +265,20 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print("Candidate tests completed in a temporary workspace.", file=sys.stderr)
             return 0 if result["status"] == "pass" else 1
+
+        if args.command == "seal-evidence":
+            bundle = load_json(args.bundle)
+            result = seal_evidence_bundle(bundle, args.root)
+            _write_json(result, args.output)
+            print("Evidence bundle sealed.", file=sys.stderr)
+            return 0
+
+        if args.command == "verify-evidence":
+            sealed = load_json(args.sealed)
+            result = verify_evidence_bundle(sealed, args.root)
+            _write_json(result, args.output)
+            print(f"Evidence integrity: {result['integrity']}", file=sys.stderr)
+            return 0 if result["valid"] else 1
 
         if args.command == "remediation-report":
             bundle = load_json(args.bundle)
