@@ -83,3 +83,8 @@ The `findings_payload` must satisfy the full schema accepted by `sentinel-securi
 - `ready_for_human_approval`: all configured gates passed, still requires a human decision.
 - `needs_review`: one or more required evidence inputs or stages are missing/not run.
 - `blocked`: a required operation ran and failed, patch validation failed, regression was detected, risk exceeded policy, or evidence integrity failed.
+
+
+## Related policy hardening
+
+Phase 4J adds optional AI adjudicator coverage, minimum reviewer count, confidence, and cross-stage disagreement gates. See [AI Adjudication Policy Gates](phase4j-ai-adjudication-gates.md).
