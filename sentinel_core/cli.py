@@ -17,6 +17,7 @@ from .evidence_verification import verify_ai_evidence
 from .adversarial_review import run_adversarial_reviews
 from .security_pipeline import run_security_pipeline
 from .patch_validation import validate_patch_proposal
+from .remediation_sandbox import run_remediation_sandbox
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -106,6 +107,12 @@ def build_parser() -> argparse.ArgumentParser:
     patch_parser.add_argument("findings")
     patch_parser.add_argument("--root", default=".")
     patch_parser.add_argument("--output")
+
+    sandbox_parser = sub.add_parser("test-candidate", help="Run explicit test/scanner commands against a candidate in a temporary workspace")
+    sandbox_parser.add_argument("proposal", help="JSON with candidate_path, candidate_content, commands")
+    sandbox_parser.add_argument("--root", default=".")
+    sandbox_parser.add_argument("--timeout", type=int, default=120)
+    sandbox_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -219,6 +226,18 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print("Patch proposal validated; source file was not modified.", file=sys.stderr)
             return 0
+
+        if args.command == "test-candidate":
+            proposal = load_json(args.proposal)
+            if not isinstance(proposal, dict):
+                raise ValueError("candidate proposal must be a JSON object")
+            result = run_remediation_sandbox(
+                args.root, proposal.get("candidate_path"), proposal.get("candidate_content"),
+                proposal.get("commands"), timeout_seconds=args.timeout,
+            )
+            _write_json(result, args.output)
+            print("Candidate tests completed in a temporary workspace.", file=sys.stderr)
+            return 0 if result["status"] == "pass" else 1
 
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
