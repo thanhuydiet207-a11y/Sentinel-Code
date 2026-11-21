@@ -2,6 +2,5 @@
   "name": "sentinel-code-security-review",
   "version": "1.1.0",
   "description": "Portable AI-agent security review Skill for Git changes and pull requests.",
-  "skills": "./skills/",
-  "mcpServers": "./.mcp.json"
+  "skills": "./skills/"
 }
