@@ -24,6 +24,7 @@ from .remediation_report import build_remediation_report
 from .provenance import seal_evidence_bundle, verify_evidence_bundle
 from .audit_trail import build_audit_trail, verify_audit_trail, lifecycle_status
 from .policy_engine import evaluate_policy
+from .remediation_orchestrator import run_remediation_orchestration
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -160,6 +161,12 @@ def build_parser() -> argparse.ArgumentParser:
     policy_parser.add_argument("policy")
     policy_parser.add_argument("evidence")
     policy_parser.add_argument("--output")
+
+    orchestrator_parser = sub.add_parser("remediation-orchestrate", help="Run remediation validation, sandbox, regression, provenance, and policy gates")
+    orchestrator_parser.add_argument("input", help="JSON orchestration package")
+    orchestrator_parser.add_argument("--root", default=".")
+    orchestrator_parser.add_argument("--timeout", type=int, default=120)
+    orchestrator_parser.add_argument("--output")
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -348,6 +355,27 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print("Policy decision: " + result["decision"], file=sys.stderr)
             return 0 if result["decision"] == "PASS" else 1
+
+        if args.command == "remediation-orchestrate":
+            package = load_json(args.input)
+            if not isinstance(package, dict):
+                raise ValueError("orchestration package must be an object")
+            result = run_remediation_orchestration(
+                package.get("findings_payload"), package.get("proposal"), args.root,
+                baseline_scan=package.get("baseline_scan"),
+                candidate_scan=package.get("candidate_scan"),
+                sandbox_commands=package.get("sandbox_commands"),
+                policy=package.get("policy"),
+                scanner_names=package.get("scanner_names"),
+                reviewer_names=package.get("reviewer_names"),
+                sealed_evidence=package.get("sealed_evidence"),
+                scanner_inputs=package.get("scanner_inputs"),
+                ai_providers=package.get("ai_providers"),
+                timeout_seconds=args.timeout,
+            )
+            _write_json(result, args.output)
+            print("Remediation orchestration: " + result["status"], file=sys.stderr)
+            return 0 if result["status"] == "ready_for_human_approval" else 1
 
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
