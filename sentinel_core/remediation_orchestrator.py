@@ -96,7 +96,7 @@ def run_remediation_orchestration(
             existing = load_workflow(checkpoint_store, workflow_id)
         except FileNotFoundError:
             create_workflow(checkpoint_store, workflow_id,
-                           ["patch_validation", "patch_risk", "sandbox", "regression_scan", "provenance", "orchestration"], checkpoint_digest,
+                           ["security_review", "patch_validation", "patch_risk", "sandbox", "regression_scan", "provenance", "orchestration"], checkpoint_digest,
                            metadata={"workflow": "sentinel-remediation-orchestrator-v1", "repository_digest": repository_digest})
         else:
             if existing.get("input_digest") != checkpoint_digest:
@@ -104,7 +104,7 @@ def run_remediation_orchestration(
             restored = checkpoint_outputs(checkpoint_store, workflow_id, checkpoint_digest)
             if "orchestration" in restored:
                 return restored["orchestration"]
-            if existing.get("stages") != ["patch_validation", "patch_risk", "sandbox", "regression_scan", "provenance", "orchestration"]:
+            if existing.get("stages") != ["security_review", "patch_validation", "patch_risk", "sandbox", "regression_scan", "provenance", "orchestration"]:
                 raise ValueError("checkpoint workflow stage plan is incompatible; use a new workflow_id")
             if existing.get("status") != "running":
                 raise ValueError("checkpoint workflow is not resumable")
@@ -116,9 +116,17 @@ def run_remediation_orchestration(
     resolved_reviewers = reviewer_names if isinstance(reviewer_names, list) else []
     ai_adjudication_evidence: dict[str, Any] = {"status": "not_run"}
 
-    if scanner_inputs is not None and ai_providers is None:
+    if checkpoint_store is not None and "security_review" in restored:
+        cached_review = restored["security_review"]
+        security_review = cached_review["security_review"]
+        validation_findings = cached_review["validation_findings"]
+        resolved_scanners = cached_review["resolved_scanners"]
+        resolved_reviewers = cached_review["resolved_reviewers"]
+        ai_adjudication_evidence = cached_review["ai_adjudication_evidence"]
+        stages.update(cached_review["stages"])
+    elif scanner_inputs is not None and ai_providers is None:
         raise ValueError("scanner_inputs require ai_providers so the security pipeline can process them")
-    if ai_providers is not None:
+    elif ai_providers is not None:
         if not isinstance(ai_providers, list) or not ai_providers:
             raise ValueError("ai_providers must be a non-empty list when supplied")
         try:
@@ -194,9 +202,19 @@ def run_remediation_orchestration(
             ai_adjudication_evidence = {"status": "failed"}
             resolved_scanners = []
             resolved_reviewers = []
-    else:
+    elif checkpoint_store is None or "security_review" not in restored:
         stages["security_review"] = {"status": "not_run", "error": "ai_providers_not_supplied"}
         stages["ai_adjudication"] = {"status": "not_run", "error": "ai_providers_not_supplied"}
+
+    if checkpoint_store is not None and "security_review" not in restored:
+        checkpoint_stage(checkpoint_store, workflow_id, "security_review", "completed", {
+            "security_review": security_review,
+            "validation_findings": validation_findings,
+            "resolved_scanners": resolved_scanners,
+            "resolved_reviewers": resolved_reviewers,
+            "ai_adjudication_evidence": ai_adjudication_evidence,
+            "stages": {key: stages[key] for key in ("security_review", "ai_adjudication", "ai_evidence_verification") if key in stages},
+        })
 
     try:
         if checkpoint_store is not None and "patch_validation" in restored:
