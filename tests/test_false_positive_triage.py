@@ -10,7 +10,7 @@ def finding(**overrides):
 
 class FalsePositiveTests(unittest.TestCase):
     def test_strong_evidence_still_requires_review(self):
-        result=analyze_findings({"findings":[finding()]})["triage"][0]
+        result=analyze_findings({"findings":[finding(title="Confirmed vulnerability")]})["triage"][0]
         self.assertEqual(result["disposition"],"review")
         self.assertFalse(result["automatic_suppression"])
 
