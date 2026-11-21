@@ -283,7 +283,11 @@ def run_remediation_orchestration(
             stages["regression_scan"] = {"status": "not_run", "error": str(exc)}
     else:
         scan = {"status": "not_run", "error": "baseline_or_candidate_scan_missing"}
-        stages["regression_scan"] = {"status": "not_run", "error": scan["error"]}
+        scan_stage = {"status": "not_run", "error": scan["error"]}
+        stages["regression_scan"] = scan_stage
+        if checkpoint_store is not None:
+            checkpoint_stage(checkpoint_store, workflow_id, "regression_scan", "completed",
+                             {"scan": scan, "stage": scan_stage})
 
     if checkpoint_store is not None and "provenance" in restored:
         provenance = restored["provenance"]["provenance"]
