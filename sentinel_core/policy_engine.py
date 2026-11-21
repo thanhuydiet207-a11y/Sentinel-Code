@@ -71,15 +71,10 @@ def evaluate_policy(policy: Any, evidence: Any) -> dict:
     missing_reviewers = sorted(set(reviewers) - set(reviewer_names))
     gates["required_reviewers"] = not missing_reviewers
     if missing_reviewers:
-        missing.append("required_reviewers_missing:" + ",".join(missing_reviewers)
+        missing.append("required_reviewers_missing:" + ",".join(missing_reviewers))
     if len(set(reviewer_names)) < min_reviewers:
         missing.append("minimum_reviewer_count_not_met")
-    if blockers:
-        decision = "BLOCK"
-    elif missing:
-        decision = "REVIEW"
-    else:
-        decision = "PASS"
+    decision = "BLOCK" if blockers else "REVIEW" if missing else "PASS"
     return {
         "policy_id": policy_id, "policy_version": str(version), "decision": decision,
         "gates": gates, "blockers": sorted(set(blockers)), "missing_evidence": sorted(set(missing)),
