@@ -59,7 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
     bench_parser.add_argument("--output")
 
     correlate_parser = sub.add_parser("correlate", help="Correlate findings from multiple scanner JSON packages")
-    correlate_parser.add_argument("inputs", nargs="+")\n    correlate_parser.add_argument("--output")\n\n    import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
+    correlate_parser.add_argument("inputs", nargs="+")
+    correlate_parser.add_argument("--output")\n\n    import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
     import_parser.add_argument("input")
     import_parser.add_argument("--root", default=".")
@@ -113,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "correlate":
-            payloads = [load_json(path) for path in args.inputs]\n            _write_json(correlate_findings(payloads), args.output)\n            return 0
+            payloads = [load_json(path) for path in args.inputs]
+            _write_json(correlate_findings(payloads), args.output)\n            return 0
 
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
