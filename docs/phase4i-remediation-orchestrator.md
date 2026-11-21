@@ -13,10 +13,27 @@ The input package is JSON with this shape:
 ```json
 {
   "findings_payload": {
+    "schema_version": "1.0",
     "findings": [
       {
         "id": "F-1",
-        "location": { "path": "src/example.py" }
+        "title": "Example security finding",
+        "rule_id": "custom:demo-rule",
+        "category": "custom:demo",
+        "severity": "high",
+        "confidence": 0.9,
+        "location": {
+          "path": "src/example.py",
+          "start_line": 1,
+          "end_line": 1
+        },
+        "evidence": {
+          "reason": "Replace with the source evidence for this finding.",
+          "line_hash": "<64-character-sha256-of-the-source-line>",
+          "data_flow": []
+        },
+        "impact": "Describe the concrete security impact.",
+        "remediation": "Describe the recommended correction."
       }
     ]
   },
@@ -46,7 +63,7 @@ The input package is JSON with this shape:
 }
 ```
 
-Replace example paths, hashes, patch content, scan snapshots, scanner JSON, and evidence bundle with actual artifacts. When `ai_providers` is supplied, the orchestrator runs the existing three-stage adversarial review pipeline (independent, challenger, adjudicator), which makes three provider requests per selected provider and requires the corresponding `SENTINEL_*_API_KEY` environment variable. Omit `ai_providers` to avoid AI API calls; then `scanner_names` and `reviewer_names` can be supplied as external evidence labels. When the AI pipeline runs successfully, scanner and reviewer names are taken from its actual outputs instead. Omit `sealed_evidence` only when the policy explicitly permits missing provenance; the default policy semantics return REVIEW until evidence is verified. An absent sandbox or scan is REVIEW. An executed sandbox failure, regression finding, patch-validation failure, or invalid evidence seal is BLOCK.
+The `findings_payload` must satisfy the full schema accepted by `sentinel-security validate`; the hash placeholder must be replaced with the actual line hash. Also replace example paths, hashes, patch content, scan snapshots, scanner JSON, and evidence bundle with actual artifacts. `scanner_inputs` entries use `{ "scanner": "semgrep", "data": <parsed scanner JSON> }`. Supply `sealed_evidence` as the complete JSON output of `seal-evidence` when provenance is required. When `ai_providers` is supplied, the orchestrator runs the existing three-stage adversarial review pipeline (independent, challenger, adjudicator), which makes three provider requests per selected provider and requires the corresponding `SENTINEL_*_API_KEY` environment variable. Omit `ai_providers` to avoid AI API calls; then `scanner_names` and `reviewer_names` can be supplied as external evidence labels. When the AI pipeline runs successfully, scanner and reviewer names are taken from its actual outputs instead. Omit `sealed_evidence` only when the policy explicitly permits missing provenance; the default policy semantics return REVIEW until evidence is verified. An absent sandbox or scan is REVIEW. An executed sandbox failure, regression finding, patch-validation failure, or invalid evidence seal is BLOCK.
 
 ## Execution boundaries
 
