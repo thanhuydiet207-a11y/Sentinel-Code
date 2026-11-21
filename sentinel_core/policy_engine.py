@@ -116,7 +116,7 @@ def evaluate_policy(policy: Any, evidence: Any) -> dict:
     missing_scanners = sorted(set(scanners) - set(scanner_names))
     gates["required_scanners"] = not missing_scanners
     if missing_scanners:
-        missing.append("required_scanners_missing:" + ",".join(missing_scanners)
+        missing.append("required_scanners_missing:" + ",".join(missing_scanners))
 
     provenance = evidence.get("evidence_verification")
     provenance_status = provenance.get("status") if isinstance(provenance, dict) else None
