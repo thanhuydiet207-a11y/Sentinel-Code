@@ -76,3 +76,23 @@ class AtomicRetryPreparationStore:
         reservations = self.connection.execute("SELECT COUNT(*) FROM retry_reservations").fetchone()[0]
         jobs = self.connection.execute("SELECT COUNT(*) FROM atomic_retry_jobs").fetchone()[0]
         return {"reservations": int(reservations), "jobs": int(jobs)}
+    def audit(self) -> dict:
+        """Report reservation/job inconsistencies without mutating persistent state."""
+        errors = []
+        reservations = self.connection.execute("SELECT key_digest, payload_digest, execution_id, status FROM retry_reservations").fetchall()
+        jobs = self.connection.execute("SELECT job_id, key_digest, status, job_json FROM atomic_retry_jobs").fetchall()
+        reservation_keys = {row[0] for row in reservations}
+        job_keys = {row[1] for row in jobs}
+        for key_digest in reservation_keys - job_keys:
+            errors.append({"kind": "reservation_without_job", "key_digest": key_digest})
+        for key_digest in job_keys - reservation_keys:
+            errors.append({"kind": "job_without_reservation", "key_digest": key_digest})
+        for job_id, key_digest, status, raw in jobs:
+            try:
+                payload = json.loads(raw)
+            except (TypeError, json.JSONDecodeError):
+                errors.append({"kind": "job_payload_invalid", "job_id": job_id})
+                continue
+            if payload.get("status") != status:
+                errors.append({"kind": "job_status_mismatch", "job_id": job_id, "database_status": status, "payload_status": payload.get("status")})
+        return {"valid": not errors, "errors": errors, "reservation_count": len(reservations), "job_count": len(jobs)}
