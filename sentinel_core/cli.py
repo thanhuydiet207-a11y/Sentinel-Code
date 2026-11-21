@@ -15,6 +15,7 @@ from .ai_review import aggregate_reviews
 from .provider_adapters import run_provider_reviews
 from .evidence_verification import verify_ai_evidence
 from .adversarial_review import run_adversarial_reviews
+from .security_pipeline import run_security_pipeline
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -91,6 +92,13 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("reviews")
     verify_parser.add_argument("--root", default=".")
     verify_parser.add_argument("--output")
+
+    pipeline_parser = sub.add_parser("security-pipeline", help="Run validation, scanner imports, triage, correlation, adversarial AI review, and evidence verification")
+    pipeline_parser.add_argument("findings")
+    pipeline_parser.add_argument("--root", default=".")
+    pipeline_parser.add_argument("--scanner-input", action="append", default=[], metavar="SCANNER=PATH")
+    pipeline_parser.add_argument("--providers", nargs="+", choices=("openai", "anthropic", "gemini"), required=True)
+    pipeline_parser.add_argument("--output", required=True)
 
     import_parser = sub.add_parser("import-scanner", help="Import Semgrep, Gitleaks, or Trivy JSON with local evidence hashes")
     import_parser.add_argument("scanner", choices=SUPPORTED)
@@ -180,13 +188,30 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(verify_ai_evidence(findings_data, reviews_data, args.root), args.output)
             return 0
 
+        if args.command == "security-pipeline":
+            scanner_inputs = []
+            for specification in args.scanner_input:
+                scanner, separator, input_path = specification.partition("=")
+                if not separator or not scanner or not input_path:
+                    raise ValueError("--scanner-input must use SCANNER=PATH")
+                if scanner not in SUPPORTED:
+                    raise ValueError("scanner must be one of: " + ", ".join(SUPPORTED))
+                scanner_inputs.append({"scanner": scanner, "data": load_json(input_path)})
+            findings_data = load_json(args.findings)
+            result = run_security_pipeline(
+                findings_data, args.root, args.providers, scanner_inputs=scanner_inputs
+            )
+            _write_json(result, args.output)
+            print("Security pipeline report written.", file=sys.stderr)
+            return 0
+
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
             payload = import_scanner_results(args.scanner, scanner_data, args.root)
             _write_json(payload, args.output)
             print("Scanner import summary written.", file=sys.stderr)
             return 0
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, RuntimeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     return 2

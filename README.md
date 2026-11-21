@@ -182,3 +182,27 @@ The seed set contains 16 synthetic cases, including safe negative controls. It i
 ## Versioning
 
 This development line is version `1.1.0`. Keep `skills/pr-security-review/` and `.agents/skills/pr-security-review/` byte-for-byte identical. Run `tests/validate-agent-skills.py` after changing either copy.
+
+
+## End-to-end Security Core pipeline
+
+The deterministic CLI can combine normalized findings with existing Semgrep, Gitleaks,
+and Trivy JSON output, then run evidence validation, deduplication, correlation,
+false-positive triage, three-stage adversarial AI review, evidence-reference checks,
+and a combined report:
+
+```bash
+python3 -m sentinel_core security-pipeline findings.json \
+  --root . \
+  --scanner-input semgrep=artifacts/semgrep.json \
+  --scanner-input gitleaks=artifacts/gitleaks.json \
+  --scanner-input trivy=artifacts/trivy.json \
+  --providers openai anthropic gemini \
+  --output artifacts/security-pipeline.json
+```
+
+The scanner JSON files must already exist; this command imports results but does not
+launch scanner executables. The AI stages make three sequential requests per selected
+provider and may incur provider charges. Invalid source evidence stops execution before
+AI requests. The pipeline is advisory and never suppresses findings automatically.
+See [Security Pipeline Orchestration](docs/SECURITY-PIPELINE-ORCHESTRATION.md).
