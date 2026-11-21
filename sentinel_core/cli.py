@@ -20,6 +20,7 @@ from .patch_validation import validate_patch_proposal
 from .remediation_sandbox import run_remediation_sandbox
 from .regression import compare_scan_snapshots
 from .patch_risk import review_patch_risk
+from .remediation_report import build_remediation_report
 
 
 def _write_json(value: Any, destination: str | None) -> None:
@@ -119,6 +120,10 @@ def build_parser() -> argparse.ArgumentParser:
     risk_parser = sub.add_parser("review-patch-risk", help="Estimate advisory risk signals from a proposed unified diff")
     risk_parser.add_argument("proposal")
     risk_parser.add_argument("--output")
+
+    remediation_parser = sub.add_parser("remediation-report", help="Build a remediation decision report from supplied evidence artifacts")
+    remediation_parser.add_argument("bundle")
+    remediation_parser.add_argument("--output")
 
     compare_parser = sub.add_parser("compare-scans", help="Compare baseline and candidate normalized scan findings for regressions")
     compare_parser.add_argument("baseline")
@@ -249,6 +254,13 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(result, args.output)
             print("Candidate tests completed in a temporary workspace.", file=sys.stderr)
             return 0 if result["status"] == "pass" else 1
+
+        if args.command == "remediation-report":
+            bundle = load_json(args.bundle)
+            result = build_remediation_report(bundle)
+            _write_json(result, args.output)
+            print(f"Remediation decision: {result['decision']}", file=sys.stderr)
+            return 1 if result["decision"] != "ready_for_manual_approval" else 0
 
         if args.command == "review-patch-risk":
             proposal = load_json(args.proposal)
