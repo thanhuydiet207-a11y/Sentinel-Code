@@ -244,6 +244,10 @@ def verify_workflow(state: Any) -> dict:
         if status == "retry" and prior_status != "failed": errors.append(f"checkpoint_{i}_retry_without_failure")
         if prior_status == "retry" and status not in {"completed", "failed", "skipped"}: errors.append(f"checkpoint_{i}_invalid_retry_result")
         if status not in _ALLOWED: errors.append(f"checkpoint_{i}_invalid_status")
+        if status == "failed" and (not isinstance(event.get("error"), str) or not event.get("error", "").strip()): errors.append(f"checkpoint_{i}_failed_error_missing")
+        if status == "completed" and event.get("error") is not None: errors.append(f"checkpoint_{i}_completed_error_present")
+        if status in {"skipped", "retry"} and event.get("output") is not None: errors.append(f"checkpoint_{i}_{status}_output_present")
+        if status == "retry" and event.get("error") is not None: errors.append(f"checkpoint_{i}_retry_error_present")
         latest[stage] = status
         if event.get("previous_hash") != previous: errors.append(f"checkpoint_{i}_previous_hash_mismatch")
         actual = _hash({k:v for k,v in event.items() if k != "event_hash"})
@@ -253,6 +257,13 @@ def verify_workflow(state: Any) -> dict:
         previous = event.get("event_hash")
     if state.get("event_count") != len(checkpoints): errors.append("event_count_mismatch")
     if state.get("head_hash") != previous: errors.append("head_hash_mismatch")
+    if any(status == "failed" for status in latest.values()):
+        derived_status = "failed"
+    elif state.get("stages") and all(latest.get(stage) in {"completed", "skipped"} for stage in state.get("stages", [])):
+        derived_status = "completed"
+    else:
+        derived_status = "running"
+    if state.get("status") != derived_status: errors.append("workflow_status_checkpoint_mismatch")
     if not isinstance(state.get("input_digest"), str) or not re.fullmatch(r"[a-fA-F0-9]{64}", state.get("input_digest","")): errors.append("input_digest_invalid")
     return {"valid": not errors, "errors": errors, "event_count": len(checkpoints), "head_hash": previous}
 
