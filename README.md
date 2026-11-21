@@ -254,3 +254,13 @@ Build a decision report from patch validation, patch risk, temporary test sandbo
     python3 -m sentinel_core remediation-report evidence-bundle.json --output remediation-report.json
 
 The report checks the supplied evidence gates and reports blockers. A \`ready_for_manual_approval\` result still requires human approval; it does not apply patches or merge changes. It does not independently run the evidence-producing steps.
+
+
+## Phase 4F: Evidence Integrity & Provenance
+
+Seal and verify scan/test artifacts by SHA-256:
+
+    python3 -m sentinel_core seal-evidence evidence-bundle.json --root . --output sealed-evidence.json
+    python3 -m sentinel_core verify-evidence sealed-evidence.json --root .
+
+The seal binds artifact hashes and bundle metadata. Verification detects content or metadata changes. Hashes alone do not prove authorship or trusted timestamps; independently verify source revision and candidate identity.
