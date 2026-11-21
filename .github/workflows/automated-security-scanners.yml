@@ -40,8 +40,13 @@ jobs:
         run: |
           version="0.68.2"
           archive="/tmp/trivy.tar.gz"
-          url="https://github.com/aquasecurity/trivy/releases/download/v${version}/trivy_${version}_Linux-64bit.tar.gz"
-          curl --retry 3 --retry-all-errors -fsSL "$url" -o "$archive"
+          asset="trivy_${version}_Linux-64bit.tar.gz"
+          base="https://github.com/aquasecurity/trivy/releases/download/v${version}"
+          curl --retry 3 --retry-all-errors -fsSL "$base/$asset" -o "$archive"
+          curl --retry 3 --retry-all-errors -fsSL "$base/trivy_${version}_checksums.txt" -o /tmp/trivy-checksums.txt
+          grep -E "^[[:xdigit:]]{64}[[:space:]]+$asset$" /tmp/trivy-checksums.txt > /tmp/trivy.sha256
+          test -s /tmp/trivy.sha256
+          (cd /tmp && sha256sum --check trivy.sha256)
           tar -tzf "$archive" trivy >/dev/null
           tar -xzf "$archive" -C /tmp trivy
           sudo install /tmp/trivy /usr/local/bin/trivy
