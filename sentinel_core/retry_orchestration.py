@@ -42,7 +42,7 @@ def retry_policy_decision(
         "action": "retry_scheduled",
         "reason": "bounded_retry_policy_approved",
         "attempt_number": attempt_number,
-        next_attempt_number": attempt_number + 1,
-        max_attempts": max_attempts,
-        delay_seconds": delay,
+        "next_attempt_number": attempt_number + 1,
+        "max_attempts": max_attempts,
+        "delay_seconds": delay,
     }
