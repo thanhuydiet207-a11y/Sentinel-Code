@@ -12,7 +12,8 @@ from .scanner_adapters import SUPPORTED, import_scanner_results
 from .correlation import correlate_findings
 from .false_positive import analyze_findings
 from .ai_review import aggregate_reviews
-from .provider_adapters import run_provider_reviews\nfrom .evidence_verification import verify_ai_evidence
+from .provider_adapters import run_provider_reviews
+from .evidence_verification import verify_ai_evidence
 
 
 def _write_json(value: Any, destination: str | None) -> None:
