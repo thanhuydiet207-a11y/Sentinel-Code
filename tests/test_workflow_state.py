@@ -2,6 +2,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+import threading
 from pathlib import Path
 
 from sentinel_core.workflow_state import (
@@ -115,6 +116,33 @@ class WorkflowStateTests(unittest.TestCase):
             self.assertTrue(verify_workflow(state)["valid"])
             state["checkpoints"][1]["status"] = "completed"
             self.assertFalse(verify_workflow(state)["valid"])
+
+    def test_concurrent_checkpoint_writers_are_serialized(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "parallel-run", ["a", "b"], _DIGEST)
+            barrier = threading.Barrier(2)
+            def writer(stage):
+                barrier.wait()
+                checkpoint_stage(tmp, "parallel-run", stage, "completed")
+            threads = [threading.Thread(target=writer, args=(stage,)) for stage in ("a", "b")]
+            for thread in threads: thread.start()
+            for thread in threads: thread.join(timeout=5)
+            self.assertTrue(all(not thread.is_alive() for thread in threads))
+            state = load_workflow(tmp, "parallel-run")
+            self.assertEqual(len(state["checkpoints"]), 2)
+            self.assertEqual(state["status"], "completed")
+            self.assertTrue(verify_workflow(state)["valid"])
+            self.assertFalse((Path(tmp) / "parallel-run.json.lock").exists())
+
+    def test_lock_timeout_does_not_modify_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "locked-run", ["a"], _DIGEST)
+            lock = Path(tmp) / "locked-run.json.lock"
+            lock.write_text("manual lock", encoding="utf-8")
+            with self.assertRaises(TimeoutError):
+                checkpoint_stage(tmp, "locked-run", "a", "completed")
+            self.assertEqual(load_workflow(tmp, "locked-run")["checkpoints"], [])
+            lock.unlink()
     def test_invalid_workflow_id_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):

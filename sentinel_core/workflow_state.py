@@ -1,9 +1,10 @@
 """Durable checkpoint and resume metadata for long-running remediation workflows."""
 from __future__ import annotations
-import hashlib, json, os, re, tempfile
+import hashlib, json, os, re, tempfile, time, functools
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from contextlib import contextmanager
 
 _SCHEMA = 1
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
@@ -40,10 +41,52 @@ def _write(path: Path, state: dict) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
+        try:
+            dir_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
 
+
+@contextmanager
+def _workflow_lock(path: Path, timeout: float = 3.0):
+    """Serialize local writers; stale locks are never broken automatically."""
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    deadline = time.monotonic() + timeout
+    fd = None
+    while fd is None:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.write(fd, json.dumps({"pid": os.getpid(), "created_at": _now()}).encode())
+            os.fsync(fd)
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"workflow lock busy: {lock_path.name}; inspect and remove stale lock manually")
+            time.sleep(0.02)
+    try:
+        yield
+    finally:
+        os.close(fd)
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
+
+def _serialized_writer(function):
+    @functools.wraps(function)
+    def wrapped(store, workflow_id, *args, **kwargs):
+        path = _path(store, workflow_id)
+        with _workflow_lock(path):
+            return function(store, workflow_id, *args, **kwargs)
+    return wrapped
+
+@_serialized_writer
 def create_workflow(store: str | Path, workflow_id: str, stages: Any, input_digest: str, metadata: Any = None) -> dict:
     workflow_id = _safe_id(workflow_id)
     if not isinstance(stages, list) or not stages or any(not isinstance(s, str) or not s.strip() for s in stages):
@@ -62,7 +105,7 @@ def create_workflow(store: str | Path, workflow_id: str, stages: Any, input_dige
              "stages": stages, "checkpoints": [], "metadata": metadata or {},
              "event_count": 0, "head_hash": "0"*64,
              "limitations": ["Local filesystem checkpoints are not signed or immutable.",
-             "Concurrent writers are not coordinated; use one writer per workflow.",
+             "Local writers are serialized with lock files; stale locks require manual inspection and removal.",
              "Before resuming, callers must revalidate external side effects and inputs."]}
     _write(p, state)
     return state
@@ -76,6 +119,7 @@ def load_workflow(store: str | Path, workflow_id: str) -> dict:
         raise ValueError("workflow state must be an object")
     return value
 
+@_serialized_writer
 def checkpoint_stage(store: str | Path, workflow_id: str, stage: str, status: str, output: Any = None, error: str | None = None) -> dict:
     workflow_id = _safe_id(workflow_id)
     state = load_workflow(store, workflow_id)
@@ -115,6 +159,7 @@ def checkpoint_stage(store: str | Path, workflow_id: str, stage: str, status: st
     _write(_path(store, workflow_id), state)
     return state
 
+@_serialized_writer
 def retry_stage(store: str | Path, workflow_id: str, stage: str) -> dict:
     """Append an audited retry marker after a failed stage; prior attempt remains immutable."""
     workflow_id = _safe_id(workflow_id)
