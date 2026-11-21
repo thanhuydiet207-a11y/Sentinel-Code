@@ -22,6 +22,7 @@ jobs:
           jq empty .claude-plugin/plugin.json
           jq empty .claude-plugin/marketplace.json
           jq empty .codex-plugin/plugin.json
+          jq empty plugin.json
           jq empty .mcp.json
           jq empty hooks/hooks.json
       - name: Check shell syntax

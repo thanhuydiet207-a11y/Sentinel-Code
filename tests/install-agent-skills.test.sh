@@ -8,21 +8,22 @@ mkdir -p "$TMP/workspace"
 (
   cd "$TMP/workspace"
   bash "$INSTALLER" --agent shared --scope project
-  cmp "$ROOT/skills/pr-security-review/SKILL.md" ".agents/skills/pr-security-review/SKILL.md"
+  diff -ru "$ROOT/skills/pr-security-review" ".agents/skills/pr-security-review"
   bash "$INSTALLER" --agent shared --scope project
-  cmp "$ROOT/skills/pr-security-review/SKILL.md" ".agents/skills/pr-security-review/SKILL.md"
+  diff -ru "$ROOT/skills/pr-security-review" ".agents/skills/pr-security-review"
 )
 (
   cd "$TMP/workspace"
   bash "$INSTALLER" --agent copilot --scope project
-  cmp "$ROOT/skills/pr-security-review/SKILL.md" ".github/skills/pr-security-review/SKILL.md"
+  diff -ru "$ROOT/skills/pr-security-review" ".github/skills/pr-security-review"
 )
 (
   cd "$TMP/workspace"
   bash "$INSTALLER" --agent gemini --scope project
-  cmp "$ROOT/skills/pr-security-review/SKILL.md" ".gemini/skills/pr-security-review/SKILL.md"
+  diff -ru "$ROOT/skills/pr-security-review" ".gemini/skills/pr-security-review"
 )
 if bash "$INSTALLER" --agent unknown --scope project >/dev/null 2>&1; then
-  echo "FAIL: unknown agent should be rejected" >&2; exit 1
+  echo "FAIL: unknown agent should be rejected" >&2
+  exit 1
 fi
-echo "PASS: shared and host-specific skill installation"
+echo "PASS: shared and host-specific skill installation, including reference assets"
