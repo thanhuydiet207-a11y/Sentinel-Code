@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -37,7 +38,7 @@ class RetryWorkerLeaseStore:
         if current is None or not isinstance(worker_id, str) or not worker_id.strip() or not isinstance(lease_seconds, int) or isinstance(lease_seconds, bool) or lease_seconds < 1 or not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
             return {"action": "blocked", "reason": "claim_parameters_invalid"}
         expiry = (current + timedelta(seconds=lease_seconds)).isoformat()
-        token = f"{worker_id}:{current.isoformat()}"
+        token = uuid.uuid4().hex
         try:
             self.connection.execute("BEGIN IMMEDIATE")
             candidates = self.connection.execute(
@@ -122,6 +123,34 @@ class RetryWorkerLeaseStore:
             self.connection.execute("DELETE FROM retry_worker_leases WHERE job_id=?", (job_id,))
             self.connection.commit()
             return {"action": "completed", "status": outcome}
+        except sqlite3.Error:
+            self.connection.rollback()
+            return {"action": "blocked", "reason": "storage_error"}
+    def reclaim_expired(self, now: str, limit: int = 100) -> dict:
+        """Requeue jobs with expired leases transactionally; caller must revalidate before execution."""
+        current = _time(now)
+        if current is None or not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            return {"action": "blocked", "reason": "reclaim_parameters_invalid"}
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            rows = self.connection.execute(
+                "SELECT job_id, lease_expires_at FROM retry_worker_leases WHERE lease_expires_at<=? ORDER BY lease_expires_at, job_id LIMIT ?",
+                (current.isoformat(), limit),
+            ).fetchall()
+            reclaimed = []
+            for job_id, _expiry in rows:
+                lease_row = self.connection.execute("SELECT worker_id, lease_token FROM retry_worker_leases WHERE job_id=?", (job_id,)).fetchone()
+                job_row = self.connection.execute("SELECT payload_json FROM retry_jobs WHERE job_id=? AND status='claimed'", (job_id,)).fetchone()
+                if lease_row is None or job_row is None:
+                    self.connection.execute("DELETE FROM retry_worker_leases WHERE job_id=?", (job_id,))
+                    continue
+                job = json.loads(job_row[0])
+                job["status"] = "queued"
+                self.connection.execute("UPDATE retry_jobs SET status='queued', payload_json=? WHERE job_id=? AND status='claimed'", (json.dumps(job, sort_keys=True, separators=(",", ":"), ensure_ascii=False), job_id))
+                self.connection.execute("DELETE FROM retry_worker_leases WHERE job_id=? AND lease_expires_at<=?", (job_id, current.isoformat()))
+                reclaimed.append({"job_id": job_id, "previous_worker_id": lease_row[0], "job": job})
+            self.connection.commit()
+            return {"action": "reclaimed", "jobs": reclaimed}
         except sqlite3.Error:
             self.connection.rollback()
             return {"action": "blocked", "reason": "storage_error"}
