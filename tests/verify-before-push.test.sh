@@ -176,11 +176,17 @@ git -C "$TMP/example_substring" commit -qm "add credential containing example su
 assert_block "credential containing example as a substring is not suppressed" "$TMP/example_substring" "git push origin feature/test"
 
 
-new_repo twilio_token
-printf '%s\\n' 'TWILIO_AUTH_TOKEN=SG.abcdefghijklmnopqrstuvwxyz1234567890.ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890' > "$TMP/twilio_token/config.env"
-git -C "$TMP/twilio_token" add config.env
-git -C "$TMP/twilio_token" commit -qm "add Twilio token"
-assert_block "Twilio auth token is blocked" "$TMP/twilio_token" "git push origin feature/test"
+new_repo sendgrid_key
+printf '%s%s%s\\n' 'SENDGRID_API_KEY=SG.' 'abcdefghijklmnopqrstuvwx' 'yz1234567890.ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890' > "$TMP/sendgrid_key/config.env"
+git -C "$TMP/sendgrid_key" add config.env
+git -C "$TMP/sendgrid_key" commit -qm "add SendGrid API key"
+assert_block "SendGrid API key is blocked" "$TMP/sendgrid_key" "git push origin feature/test"
+
+new_repo twilio_key
+printf '%s%s\\n' 'TWILIO_API_KEY=SK0123456789ABCDEF' '0123456789ABCDEF' > "$TMP/twilio_key/config.env"
+git -C "$TMP/twilio_key" add config.env
+git -C "$TMP/twilio_key" commit -qm "add Twilio API key"
+assert_block "Twilio API key is blocked" "$TMP/twilio_key" "git push origin feature/test"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
