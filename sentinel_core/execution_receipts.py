@@ -105,15 +105,15 @@ def reconcile_execution_receipts(receipts: Any, checkpoint_events: Any) -> dict:
             continue
         candidates = by_stage.get(receipt["stage"], [])
         expected = {"completed": "completed", "failed": "failed", "abandoned": None, "started": None}.get(receipt["outcome"])
-        match_index = next((i for i, event in enumerate(candidates) if i not in used_events and (expected is None or event.get("status") == expected)), None)
+        match_index = next((i for i, event in enumerate(candidates) if (receipt["stage"], i) not in used_events and (expected is None or event.get("status") == expected)), None)
         if match_index is None:
             unmatched_receipts.append({"index": index, "reason": "checkpoint_missing_or_status_mismatch", "stage": receipt["stage"]})
         else:
-            used_events.add(match_index)
+            used_events.add((receipt["stage"], match_index))
             matches.append({"receipt_index": index, "stage": receipt["stage"], "outcome": receipt["outcome"], "checkpoint_status": candidates[match_index].get("status")})
     unmatched_checkpoints = []
     for stage, events in by_stage.items():
         for index, event in enumerate(events):
-            if index not in used_events:
+            if (stage, index) not in used_events:
                 unmatched_checkpoints.append({"stage": stage, "status": event.get("status")})
     return {"valid": not invalid_indices, "errors": [f"receipt_{i}_invalid" for i in invalid_indices], "matches": matches, "unmatched_receipts": unmatched_receipts, "unmatched_checkpoints": unmatched_checkpoints}
