@@ -10,7 +10,7 @@ class EvidenceVerificationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        source = "first line\\nunsafe = input()\\nlast line\\n"
+        source = "first line\nunsafe = input()\nlast line\n"
         (self.root / "app.py").write_text(source, encoding="utf-8")
         digest = hashlib.sha256("unsafe = input()".encode()).hexdigest()
         self.findings = {"findings": [{
