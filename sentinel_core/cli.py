@@ -160,6 +160,12 @@ def main(argv: list[str] | None = None) -> int:
             _write_json(aggregate_reviews(findings_data, reviews_data), args.output)
             return 0
 
+        if args.command == "verify-ai-evidence":
+            findings_data = load_json(args.findings)
+            reviews_data = load_json(args.reviews)
+            _write_json(verify_ai_evidence(findings_data, reviews_data, args.root), args.output)
+            return 0
+
         if args.command == "import-scanner":
             scanner_data = load_json(args.input)
             payload = import_scanner_results(args.scanner, scanner_data, args.root)
