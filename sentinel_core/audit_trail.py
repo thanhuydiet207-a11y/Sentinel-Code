@@ -108,29 +108,56 @@ def verify_audit_trail(trail: Any) -> dict:
 def lifecycle_status(events: Any) -> dict:
     if not isinstance(events, list):
         raise ValueError("events must be list")
-    types = [e.get("type") for e in events if isinstance(e, dict)]
+    types = [e.get("type") if isinstance(e, dict) else None for e in events]
     missing = []
-    def require_before(first: str, second: str, label: str):
-        if first in types and (second not in types or types.index(second) > types.index(first)):
+    positions = {}
+    for index, event_type in enumerate(types):
+        if event_type is not None:
+            positions.setdefault(event_type, []).append(index)
+
+    def require_once(event_type: str, label: str):
+        count = len(positions.get(event_type, []))
+        if count != 1:
             missing.append(label)
+
+    def require_before(first: str, second: str, label: str):
+        first_positions = positions.get(first, [])
+        second_positions = positions.get(second, [])
+        if not first_positions or not second_positions or first_positions[0] >= second_positions[0]:
+            missing.append(label)
+
     if not types or types[0] != "created":
         missing.append("created_must_be_first")
-    if types.count("created") != 1:
-        missing.append("created_must_appear_once")
-    if "approved" in types:
-        require_before("approved", "approval_requested", "approval_requested_before_approved")
-        require_before("approved", "evidence_verified", "evidence_verified_before_approved")
-        require_before("approved", "report_generated", "report_generated_before_approved")
-        if "rejected" in types:
-            missing.append("approval_and_rejection_are_mutually_exclusive")
-    if "rejected" in types and "approval_requested" not in types:
-        missing.append("approval_requested_before_rejected")
-    if "closed" in types:
-        if types[-1] != "closed" or types.count("closed") != 1:
+    require_once("created", "created_must_appear_once")
+
+    for event_type in ("approval_requested", "approved", "rejected", "closed"):
+        if len(positions.get(event_type, [])) > 1:
+            missing.append(f"{event_type}_must_appear_at_most_once")
+
+    if positions.get("approved") and positions.get("rejected"):
+        missing.append("approval_and_rejection_are_mutually_exclusive")
+
+    if positions.get("approved"):
+        require_before("approval_requested", "approved", "approval_requested_before_approved")
+        require_before("evidence_verified", "approved", "evidence_verified_before_approved")
+        require_before("report_generated", "approved", "report_generated_before_approved")
+
+    if positions.get("rejected"):
+        require_before("approval_requested", "rejected", "approval_requested_before_rejected")
+
+    if any(positions.get(event_type) for event_type in ("approved", "rejected", "closed")):
+        if len(positions.get("approval_requested", [])) != 1:
+            missing.append("approval_requested_must_appear_once_before_decision")
+
+    if positions.get("closed"):
+        if types[-1] != "closed" or len(positions["closed"]) != 1:
             missing.append("closed_must_be_final_and_unique")
-        if not any(t in types for t in ("approved", "rejected")):
+        if not (positions.get("approved") or positions.get("rejected")):
             missing.append("approval_or_rejection_before_close")
-    if any(t in types for t in ("approved", "rejected", "closed")) and "approval_requested" not in types:
-        missing.append("approval_requested_before_decision")
+        else:
+            decision_positions = positions.get("approved", []) + positions.get("rejected", [])
+            if positions["closed"][0] <= max(decision_positions):
+                missing.append("decision_before_close")
+
     return {"status": "complete" if not missing else "incomplete",
             "missing_requirements": sorted(set(missing)), "review_required": True}
