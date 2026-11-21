@@ -7,7 +7,7 @@ from typing import Any
 
 _SCHEMA = 1
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-_ALLOWED = {"completed", "failed", "skipped"}
+_ALLOWED = {"completed", "failed", "skipped", "retry"}
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -79,20 +79,23 @@ def load_workflow(store: str | Path, workflow_id: str) -> dict:
 def checkpoint_stage(store: str | Path, workflow_id: str, stage: str, status: str, output: Any = None, error: str | None = None) -> dict:
     workflow_id = _safe_id(workflow_id)
     state = load_workflow(store, workflow_id)
-    if state.get("status") != "running":
+    if state.get("status") not in {"running", "failed"}:
         raise ValueError("workflow is not running")
     if stage not in state.get("stages", []):
         raise ValueError("stage is not declared")
     if status not in _ALLOWED:
         raise ValueError("status must be completed, failed, or skipped")
-    if any(c.get("stage") == stage for c in state.get("checkpoints", []) if isinstance(c, dict)):
-        raise ValueError("checkpoint is immutable; stage already recorded")
+    prior = [c for c in state.get("checkpoints", []) if isinstance(c, dict) and c.get("stage") == stage]
+    if prior and prior[-1].get("status") != "retry":
+        raise ValueError("checkpoint is immutable; call retry_stage after a failed attempt")
     if status == "completed" and error is not None:
         raise ValueError("completed checkpoint cannot contain error")
     if status == "failed" and (not isinstance(error, str) or not error.strip()):
         raise ValueError("failed checkpoint requires error")
-    if status == "skipped" and output is not None:
-        raise ValueError("skipped stage cannot have output")
+    if status in {"skipped", "retry"} and output is not None:
+        raise ValueError(f"{status} stage cannot have output")
+    if status == "retry":
+        raise ValueError("retry markers must be created with retry_stage")
     event = {"sequence": state["event_count"], "workflow_id": workflow_id, "stage": stage,
              "status": status, "timestamp": _now(), "output": output,
              "output_digest": _hash(output) if output is not None else None,
@@ -102,10 +105,36 @@ def checkpoint_stage(store: str | Path, workflow_id: str, stage: str, status: st
     state["event_count"] += 1
     state["head_hash"] = event["event_hash"]
     state["updated_at"] = event["timestamp"]
+    latest = {s: next((c for c in reversed(state["checkpoints"]) if c.get("stage") == s), None) for s in state["stages"]}
     if status == "failed":
         state["status"] = "failed"
-    elif all(any(c.get("stage") == s and c.get("status") == "completed" for c in state["checkpoints"]) for s in state["stages"]):
+    elif all(item and item.get("status") in {"completed", "skipped"} for item in latest.values()):
         state["status"] = "completed"
+    else:
+        state["status"] = "running"
+    _write(_path(store, workflow_id), state)
+    return state
+
+def retry_stage(store: str | Path, workflow_id: str, stage: str) -> dict:
+    """Append an audited retry marker after a failed stage; prior attempt remains immutable."""
+    workflow_id = _safe_id(workflow_id)
+    state = load_workflow(store, workflow_id)
+    if state.get("status") not in {"running", "failed"}:
+        raise ValueError("workflow is not retryable")
+    if stage not in state.get("stages", []):
+        raise ValueError("stage is not declared")
+    prior = [c for c in state.get("checkpoints", []) if isinstance(c, dict) and c.get("stage") == stage]
+    if not prior or prior[-1].get("status") != "failed":
+        raise ValueError("only the latest failed stage attempt can be retried")
+    event = {"sequence": state["event_count"], "workflow_id": workflow_id, "stage": stage,
+             "status": "retry", "timestamp": _now(), "output": None, "output_digest": None,
+             "error": None, "previous_hash": state["head_hash"]}
+    event["event_hash"] = _hash({k:v for k,v in event.items() if k != "event_hash"})
+    state["checkpoints"].append(event)
+    state["event_count"] += 1
+    state["head_hash"] = event["event_hash"]
+    state["updated_at"] = event["timestamp"]
+    state["status"] = "running"
     _write(_path(store, workflow_id), state)
     return state
 
@@ -116,7 +145,7 @@ def verify_workflow(state: Any) -> dict:
     checkpoints = state.get("checkpoints")
     if not isinstance(checkpoints, list):
         return {"valid": False, "errors": ["checkpoints_not_list"]}
-    previous, seen = "0"*64, set()
+    previous, latest = "0"*64, {}
     for i, event in enumerate(checkpoints):
         if not isinstance(event, dict):
             errors.append(f"checkpoint_{i}_not_object")
@@ -124,9 +153,14 @@ def verify_workflow(state: Any) -> dict:
         if event.get("sequence") != i: errors.append(f"checkpoint_{i}_sequence_mismatch")
         if event.get("workflow_id") != state.get("workflow_id"): errors.append(f"checkpoint_{i}_workflow_mismatch")
         if event.get("stage") not in state.get("stages", []): errors.append(f"checkpoint_{i}_unknown_stage")
-        if event.get("stage") in seen: errors.append(f"checkpoint_{i}_duplicate_stage")
-        seen.add(event.get("stage"))
-        if event.get("status") not in _ALLOWED: errors.append(f"checkpoint_{i}_invalid_status")
+        stage = event.get("stage")
+        status = event.get("status")
+        prior_status = latest.get(stage)
+        if prior_status is not None and prior_status != "failed" and status != "retry": errors.append(f"checkpoint_{i}_invalid_attempt_transition")
+        if prior_status == "failed" and status != "retry": errors.append(f"checkpoint_{i}_retry_marker_missing")
+        if status == "retry" and prior_status != "failed": errors.append(f"checkpoint_{i}_retry_without_failure")
+        if status not in _ALLOWED: errors.append(f"checkpoint_{i}_invalid_status")
+        latest[stage] = status
         if event.get("previous_hash") != previous: errors.append(f"checkpoint_{i}_previous_hash_mismatch")
         actual = _hash({k:v for k,v in event.items() if k != "event_hash"})
         if event.get("event_hash") != actual: errors.append(f"checkpoint_{i}_hash_mismatch")
@@ -145,9 +179,10 @@ def resume_plan(store: str | Path, workflow_id: str, input_digest: str | None = 
         return {"workflow_id": workflow_id, "status": "blocked", "reason": "checkpoint_integrity_invalid", "errors": checked["errors"], "completed_stages": [], "remaining_stages": []}
     if input_digest is not None and input_digest.lower() != state.get("input_digest"):
         return {"workflow_id": workflow_id, "status": "blocked", "reason": "input_digest_mismatch", "completed_stages": [], "remaining_stages": state.get("stages", [])}
-    completed = [c["stage"] for c in state["checkpoints"] if c["status"] == "completed"]
-    failed = [c["stage"] for c in state["checkpoints"] if c["status"] == "failed"]
-    skipped = [c["stage"] for c in state["checkpoints"] if c["status"] == "skipped"]
+    latest = {s: next((c for c in reversed(state["checkpoints"]) if c.get("stage") == s), None) for s in state["stages"]}
+    completed = [s for s, c in latest.items() if c and c["status"] == "completed"]
+    failed = [s for s, c in latest.items() if c and c["status"] == "failed"]
+    skipped = [s for s, c in latest.items() if c and c["status"] == "skipped"]
     remaining = [s for s in state["stages"] if s not in completed and s not in skipped]
     return {"workflow_id": workflow_id, "status": state["status"], "integrity": "verified",
             "completed_stages": completed, "failed_stages": failed, "skipped_stages": skipped,
@@ -164,4 +199,5 @@ def checkpoint_outputs(store: str | Path, workflow_id: str, input_digest: str | 
         raise ValueError("checkpoint integrity invalid: " + ", ".join(checked["errors"]))
     if input_digest is not None and input_digest.lower() != state.get("input_digest"):
         raise ValueError("input digest mismatch")
-    return {event["stage"]: event["output"] for event in state["checkpoints"] if event.get("status") == "completed"}
+    latest = {s: next((event for event in reversed(state["checkpoints"]) if event.get("stage") == s), None) for s in state.get("stages", [])}
+    return {stage: event["output"] for stage, event in latest.items() if event and event.get("status") == "completed"}
