@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 
 from sentinel_core.workflow_state import (
-    create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow, resume_plan, retry_stage, verify_workflow,
+    create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow, resume_plan, retry_stage, verify_workflow, validate_workflow_schema, migrate_workflow,
 )
 
 _DIGEST = hashlib.sha256(b"input package").hexdigest()
@@ -143,6 +143,45 @@ class WorkflowStateTests(unittest.TestCase):
                 checkpoint_stage(tmp, "locked-run", "a", "completed")
             self.assertEqual(load_workflow(tmp, "locked-run")["checkpoints"], [])
             lock.unlink()
+    def test_schema1_migration_creates_backup_and_preserves_chain(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "legacy-run", ["a", "b"], _DIGEST)
+            checkpoint_stage(tmp, "legacy-run", "a", "completed", {"old": True})
+            path = Path(tmp) / "legacy-run.json"
+            legacy = json.loads(path.read_text())
+            legacy["schema_version"] = 1
+            legacy.pop("migration_history", None)
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            self.assertTrue(validate_workflow_schema(legacy)["valid"])
+            result = migrate_workflow(tmp, "legacy-run")
+            self.assertEqual(result["status"], "migrated")
+            self.assertTrue(Path(result["backup"]).exists())
+            migrated = load_workflow(tmp, "legacy-run")
+            self.assertEqual(migrated["schema_version"], 2)
+            self.assertEqual(migrated["migration_history"][-1]["from"], 1)
+            self.assertTrue(verify_workflow(migrated)["valid"])
+            self.assertEqual(checkpoint_outputs(tmp, "legacy-run")["a"], {"old": True})
+
+    def test_schema_validation_rejects_missing_required_fields(self):
+        malformed = {"schema_version": 2, "workflow_id": "bad"}
+        result = validate_workflow_schema(malformed)
+        self.assertFalse(result["valid"])
+        self.assertIn("missing_checkpoints", result["errors"])
+
+    def test_migration_refuses_corrupt_checkpoint_without_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "legacy-corrupt", ["a"], _DIGEST)
+            checkpoint_stage(tmp, "legacy-corrupt", "a", "completed")
+            path = Path(tmp) / "legacy-corrupt.json"
+            state = json.loads(path.read_text())
+            state["schema_version"] = 1
+            state.pop("migration_history", None)
+            state["checkpoints"][0]["status"] = "failed"
+            path.write_text(json.dumps(state), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "integrity validation failed"):
+                migrate_workflow(tmp, "legacy-corrupt")
+            self.assertFalse(Path(tmp, "legacy-corrupt.json.schema1.bak").exists())
+
     def test_invalid_workflow_id_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
