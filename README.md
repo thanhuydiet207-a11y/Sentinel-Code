@@ -227,3 +227,12 @@ Run explicit test/scanner commands against a candidate in a temporary workspace 
     python3 -m sentinel_core test-candidate proposal.json --root . --timeout 120 --output artifacts/candidate-tests.json
 
 Proposal JSON contains \`candidate_path\`, \`candidate_content\`, and \`commands\` (argv arrays). Commands are allowlisted, shell execution is disabled, and the runner stops on the first failure or timeout. This temporary workspace is **not OS-level isolation**; see [sandbox limitations](docs/REMEDIATION-TEST-SANDBOX.md). Do not run untrusted candidate code without a disposable container or VM.
+
+
+## Phase 4C: Regression & Security Rescan
+
+Compare normalized findings before and after a candidate patch:
+
+    python3 -m sentinel_core compare-scans baseline.json candidate.json --output comparison.json
+
+The comparison reports fixed, new, persisting, duplicate findings and severity changes. A newly detected finding or severity increase makes the command return exit code 1 (regression). A clean comparison is not a security guarantee: verify scan completeness, scanner/configuration parity, and manually confirm proposed fixes. See [comparison limitations](docs/REGRESSION-SECURITY-RESCAN.md).
