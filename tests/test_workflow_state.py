@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from sentinel_core.workflow_state import (
-    create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow, resume_plan, verify_workflow,
+    create_workflow, checkpoint_stage, checkpoint_outputs, load_workflow, resume_plan, retry_stage, verify_workflow,
 )
 
 _DIGEST = hashlib.sha256(b"input package").hexdigest()
@@ -81,6 +81,40 @@ class WorkflowStateTests(unittest.TestCase):
             self.assertFalse(result["valid"])
             self.assertIn("checkpoint_0_hash_mismatch", result["errors"])
 
+    def test_failed_stage_can_be_retried_with_audited_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "retry-run", ["build", "verify"], _DIGEST)
+            checkpoint_stage(tmp, "retry-run", "build", "completed", {"artifact": "ok"})
+            checkpoint_stage(tmp, "retry-run", "verify", "failed", error="transient failure")
+            plan = resume_plan(tmp, "retry-run", _DIGEST)
+            self.assertEqual(plan["failed_stages"], ["verify"])
+            self.assertEqual(plan["remaining_stages"], ["verify"])
+            retry_stage(tmp, "retry-run", "verify")
+            plan = resume_plan(tmp, "retry-run", _DIGEST)
+            self.assertTrue(plan["safe_to_resume"])
+            self.assertEqual(plan["remaining_stages"], ["verify"])
+            checkpoint_stage(tmp, "retry-run", "verify", "completed", {"verified": True})
+            state = load_workflow(tmp, "retry-run")
+            self.assertEqual(state["status"], "completed")
+            self.assertTrue(verify_workflow(state)["valid"])
+            self.assertEqual(checkpoint_outputs(tmp, "retry-run", _DIGEST)["verify"], {"verified": True})
+
+    def test_retry_marker_requires_latest_failed_attempt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "retry-invalid", ["a"], _DIGEST)
+            checkpoint_stage(tmp, "retry-invalid", "a", "completed")
+            with self.assertRaisesRegex(ValueError, "workflow is not retryable"):
+                retry_stage(tmp, "retry-invalid", "a")
+
+    def test_failed_stage_retry_history_is_hash_chained(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "retry-chain", ["a"], _DIGEST)
+            checkpoint_stage(tmp, "retry-chain", "a", "failed", error="first attempt")
+            retry_stage(tmp, "retry-chain", "a")
+            state = load_workflow(tmp, "retry-chain")
+            self.assertTrue(verify_workflow(state)["valid"])
+            state["checkpoints"][1]["status"] = "completed"
+            self.assertFalse(verify_workflow(state)["valid"])
     def test_invalid_workflow_id_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
