@@ -10,17 +10,17 @@ class PatchValidationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        self.source = "def query(value):\\n    return value\\n"
+        self.source = "def query(value):\n    return value\n"
         (self.root / "app.py").write_text(self.source, encoding="utf-8")
         self.findings = {"findings": [{
             "id": "F-1", "location": {"path": "app.py", "start_line": 2, "end_line": 2}
         }]}
         self.patch = (
-            "--- a/app.py\\n+++ b/app.py\\n"
-            "@@ -1,2 +1,2 @@\\n"
-            " def query(value):\\n"
-            "-    return value\\n"
-            "+    return safe(value)\\n"
+            "--- a/app.py\n+++ b/app.py\n"
+            "@@ -1,2 +1,2 @@\n"
+            " def query(value):\n"
+            "-    return value\n"
+            "+    return safe(value)\n"
         )
         self.proposal = {
             "finding_id": "F-1",
@@ -35,7 +35,7 @@ class PatchValidationTests(unittest.TestCase):
     def test_valid_patch_returns_candidate_without_modifying_source(self):
         result = validate_patch_proposal(self.proposal, self.findings, self.root)
         self.assertEqual(result["status"], "validated_candidate")
-        self.assertEqual(result["candidate_content"], "def query(value):\\n    return safe(value)\\n")
+        self.assertEqual(result["candidate_content"], "def query(value):\n    return safe(value)\n")
         self.assertFalse(result["file_modified"])
         self.assertEqual((self.root / "app.py").read_text(), self.source)
 
@@ -58,7 +58,7 @@ class PatchValidationTests(unittest.TestCase):
             validate_patch_proposal(bad, self.findings, self.root)
 
     def test_rejects_multiple_file_headers(self):
-        bad = {**self.proposal, "patch": self.patch + "--- a/other.py\\n+++ b/other.py\\n"}
+        bad = {**self.proposal, "patch": self.patch + "--- a/other.py\n+++ b/other.py\n"}
         with self.assertRaisesRegex(PatchValidationError, "unsupported unified diff"):
             validate_patch_proposal(bad, self.findings, self.root)
 
