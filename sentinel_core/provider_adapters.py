@@ -175,6 +175,15 @@ def run_provider_reviews(
     for provider in providers:
         model, text, name = _provider_call(provider, prompt, transport)
         votes = _parse_review_response(text)
+        finding_entries = findings_payload.get("findings")
+        if not isinstance(finding_entries, list):
+            raise ReviewValidationError("findings payload must contain a findings array")
+        expected_ids = {item.get("id") for item in finding_entries if isinstance(item, dict)}
+        returned_ids = [vote.get("finding_id") if isinstance(vote, dict) else None for vote in votes]
+        if len(returned_ids) != len(expected_ids) or set(returned_ids) != expected_ids:
+            raise ReviewValidationError(
+                f"provider {provider} must return exactly one review for every finding"
+            )
         reviewer_id = f"{reviewer_namespace}:{provider}" if reviewer_namespace else provider
         reviewers.append({
             "reviewer_id": reviewer_id,
