@@ -213,7 +213,8 @@ def run_remediation_orchestration(
     policy_result = evaluate_policy(policy, policy_evidence)
     stages["policy"] = {"status": policy_result["decision"].lower(),
                         "blockers": policy_result["blockers"],
-                        "missing_evidence": policy_result["missing_evidence"]}
+                        "missing_evidence": policy_result["missing_evidence"],
+                        "review_reasons": policy_result["review_reasons"]}
 
     report_bundle = {
         "patch_validation": {"valid": validation is not None, "issues": [] if validation else [stages["patch_validation"].get("error", "validation_failed")]},
