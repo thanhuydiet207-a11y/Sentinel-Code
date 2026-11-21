@@ -139,5 +139,47 @@ class RemediationOrchestratorTests(unittest.TestCase):
             sandbox_runner.assert_not_called()
 
 
+    @patch("sentinel_core.remediation_orchestrator.run_security_pipeline")
+    @patch("sentinel_core.remediation_orchestrator.run_remediation_sandbox")
+    def test_opt_in_ai_pipeline_supplies_actual_scanner_and_reviewer_evidence(self, sandbox_runner, security_runner):
+        sandbox_runner.return_value = {
+            "status": "pass", "commands": [{"status": "pass"}],
+            "original_repository_modified": False, "os_level_isolation": False,
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, _, findings, proposal = self._fixture(root)
+            security_runner.return_value = {
+                "findings": findings,
+                "scanner_imports": [{"scanner": "semgrep"}],
+                "summary": {"adversarial_provider_requests": 3},
+                "adversarial_review": {
+                    "stages": {
+                        "adjudicator": {
+                            "reviewers": [{"provider": "openai"}]
+                        }
+                    }
+                },
+                "evidence_verification": {
+                    "adjudicator": {"metadata": {"verified_hash_references": 1}}
+                },
+            }
+            policy = {
+                "policy_id": "ai-enabled", "max_risk_score": 100,
+                "required_scanners": ["semgrep"], "required_reviewers": ["openai"],
+                "min_reviewers": 1, "require_evidence_verified": False,
+            }
+            result = run_remediation_orchestration(
+                findings, proposal, root, baseline_scan={"findings": []},
+                candidate_scan={"findings": []}, sandbox_commands=[["python", "--version"]],
+                policy=policy, scanner_inputs=[{"scanner": "semgrep", "data": {}}],
+                ai_providers=["openai"],
+            )
+            self.assertEqual(result["policy"]["decision"], "PASS")
+            self.assertEqual(result["stages"]["security_review"]["provider_requests"], 3)
+            self.assertEqual(result["stages"]["ai_evidence_verification"]["verified_hash_references"], 1)
+            security_runner.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
