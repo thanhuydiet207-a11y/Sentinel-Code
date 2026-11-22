@@ -77,18 +77,25 @@ def build_execution_plan(stages: Any, dependencies: Any = None, checkpoints: Any
 
     statuses = {stage: latest.get(stage, "pending") for stage in stages}
     ready, waiting, blocked, terminal = [], [], [], []
-    for stage in stages:
+    blocked_by_stage = {}
+    for stage in graph["topological_order"]:
         status = statuses[stage]
         deps = graph["dependencies"].get(stage, [])
         if status in {"completed", "skipped"}:
             terminal.append(stage)
             continue
         if status == "failed":
-            blocked.append({"stage": stage, "reason": "stage_failed"})
+            finding = {"stage": stage, "reason": "stage_failed"}
+            blocked.append(finding)
+            blocked_by_stage[stage] = finding
             continue
         failed_deps = [dep for dep in deps if statuses[dep] == "failed"]
-        if failed_deps:
-            blocked.append({"stage": stage, "reason": "dependency_failed", "dependencies": failed_deps})
+        propagated_deps = [dep for dep in deps if dep in blocked_by_stage]
+        if failed_deps or propagated_deps:
+            affected = sorted(set(failed_deps + propagated_deps))
+            finding = {"stage": stage, "reason": "dependency_failed", "dependencies": affected}
+            blocked.append(finding)
+            blocked_by_stage[stage] = finding
             continue
         unresolved = [dep for dep in deps if statuses[dep] not in {"completed", "skipped"}]
         if unresolved:
