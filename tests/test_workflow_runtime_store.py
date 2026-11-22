@@ -54,7 +54,7 @@ class DurableWorkflowRuntimeStoreTests(unittest.TestCase):
         self.assertEqual(self.store.create("exec", "wf", [], "ready", self.at)["reason"], "snapshot_invalid")
         self.assertEqual(self.store.save("exec", True, self.snapshot, "ready", self.at)["reason"], "version_invalid")
         self.assertEqual(self.store.list_recoverable(0)["reason"], "limit_invalid")
-        self.assertEqual(self.store.create("exec", "wf", self.snapshot, "ready", "naive-time")["reason], "timestamp_invalid")
+        self.assertEqual(self.store.create("exec", "wf", self.snapshot, "ready", "naive-time")["reason"], "timestamp_invalid")
 
     def test_not_found_and_storage_failures_are_structured(self):
         self.assertEqual(self.store.load("missing")["action"], "not_found")
