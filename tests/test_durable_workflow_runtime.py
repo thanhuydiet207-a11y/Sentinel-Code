@@ -41,6 +41,10 @@ class DurableWorkflowRuntimeAdapterTests(unittest.TestCase):
         self.store.create("exec-1", "wf-1", {"unexpected": True}, "ready", self.at)
         self.assertEqual(DurableWorkflowRuntime.restore(self.store, "exec-1")["reason"], "snapshot_schema_invalid")
 
+    def test_malformed_recovery_snapshot_fails_closed(self):
+        self.store.create("exec-bad", "wf-1", {"stages": ["a", []], "dependencies": {}, "max_parallelism": 1, "stage_states": {}, "deadlines": {}, "cancelled": False}, "ready", self.at)
+        self.assertEqual(DurableWorkflowRuntime.restore(self.store, "exec-bad")["reason"], "stages_invalid")
+
     def test_duplicate_create_returns_structured_failure(self):
         runtime = WorkflowExecutionRuntime(["a"])
         DurableWorkflowRuntime.create(self.store, "exec-1", "wf-1", runtime, self.at)
