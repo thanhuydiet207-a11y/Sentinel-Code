@@ -52,7 +52,15 @@ class DurableWorkflowRuntime:
         required = {"stages", "dependencies", "max_parallelism", "stage_states", "deadlines", "cancelled"}
         if not isinstance(snapshot, dict) or not required.issubset(snapshot):
             return {"action": "blocked", "reason": "snapshot_schema_invalid"}
-        if not isinstance(snapshot["stage_states"], dict) or set(snapshot["stage_states"]) != set(snapshot["stages"]):
+        stages = snapshot["stages"]
+        if not isinstance(stages, list) or not stages or any(not isinstance(stage, str) or not stage.strip() for stage in stages) or len(set(stages)) != len(stages):
+            return {"action": "blocked", "reason": "stages_invalid"}
+        if not isinstance(snapshot["dependencies"], dict):
+            return {"action": "blocked", "reason": "dependencies_invalid"}
+        parallelism = snapshot["max_parallelism"]
+        if not isinstance(parallelism, int) or isinstance(parallelism, bool) or parallelism < 1:
+            return {"action": "blocked", "reason": "parallelism_invalid"}
+        if not isinstance(snapshot["stage_states"], dict) or set(snapshot["stage_states"]) != set(stages):
             return {"action": "blocked", "reason": "stage_state_invalid"}
         if any(state not in _VALID_STAGE_STATES for state in snapshot["stage_states"].values()):
             return {"action": "blocked", "reason": "stage_state_invalid"}
