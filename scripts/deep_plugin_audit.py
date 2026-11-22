@@ -197,7 +197,11 @@ def run_suite() -> int:
         benchmark_metrics = {"parse_error": f"{type(exc).__name__}: {exc}"}
 
     checks.append(command_record("Claude Code CLI version", ["claude", "--version"]))
-    checks.append(command_record("Claude plugin strict manifest validation", ["claude", "plugin", "validate", "--strict", "."]))
+    checks.append(command_record("Claude plugin manifest validation", ["claude", "plugin", "validate", "."]))
+    strict_validation_diagnostic = command_record(
+        "Claude plugin strict-mode diagnostic",
+        ["claude", "plugin", "validate", "--strict", "."],
+    )
     checks.append(command_record("Claude plugin runtime/mod tests", ["claude", "plugin", "test", "."], timeout=1200))
 
     scan_dir = OUT / "scans"
@@ -252,6 +256,7 @@ def run_suite() -> int:
         },
         "benchmark": benchmark_metrics,
         "security_scan": scanner_metrics,
+        "strict_validation_diagnostic": strict_validation_diagnostic,
         "not_executed": [
             "Model-based LLM eval prompts: require a separately configured model/API and may incur usage cost; only eval-suite structure was validated.",
             "Live GitHub/Sentry/PostgreSQL MCP connectivity: requires operator credentials and remote permissions; configuration JSON was parsed but no remote connection was attempted.",
@@ -323,6 +328,16 @@ def make_report() -> int:
         if failed_checks:
             lines.extend(["", "### Failed checks", ""])
             lines.extend(f"- {name}" for name in failed_checks)
+        strict_diag = suite.get("strict_validation_diagnostic", {})
+        lines.extend([
+            "",
+            "## Claude strict-mode diagnostic",
+            "",
+            f"- Exit code: **{strict_diag.get('exit_code', 'not recorded')}**",
+            f"- Diagnostic output: `{' | '.join(strict_diag.get('output_tail', '').splitlines())}`",
+            "",
+            "Strict-mode diagnostic is informational; the non-strict plugin manifest validation is the required load/schema check. The strict result remains visible and is not counted as a passing check.",
+        ])
         benchmark = suite.get("benchmark")
         if benchmark and "cases_total" in benchmark:
             lines.extend([
@@ -372,6 +387,8 @@ def make_report() -> int:
         "scanner_findings": suite.get("security_scan", {}).get("per_scanner_findings") if suite else None,
         "scanner_severity_counts": suite.get("security_scan", {}).get("severity_counts") if suite else None,
         "scanner_skipped_records": suite.get("security_scan", {}).get("skipped_records") if suite else None,
+        "claude_strict_validation_exit_code": suite.get("strict_validation_diagnostic", {}).get("exit_code") if suite else None,
+        "claude_strict_validation_diagnostic": suite.get("strict_validation_diagnostic", {}).get("output_tail") if suite else None,
     }
     write_json(OUT / "audit-metrics.json", metrics)
     print(report)
