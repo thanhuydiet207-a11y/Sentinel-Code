@@ -38,7 +38,7 @@ class TaskExecutionAdapterTests(unittest.TestCase):
     def test_invalid_task_and_context_rejected(self):
         self.assertEqual(self.adapter.execute(None)["reason"], "task_invalid")
         self.registry.register("noop", lambda payload, context=None: None)
-        self.assertEqual(self.adapter.execute({"task_id": "t1", "handler": "noop"}, "bad")["reason], "context_invalid")
+        self.assertEqual(self.adapter.execute({"task_id": "t1", "handler": "noop"}, "bad")["reason"], "context_invalid")
 
     def test_version_mismatch_blocks(self):
         self.registry.register("v", lambda payload, context=None: payload, "1")
