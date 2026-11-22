@@ -22,7 +22,7 @@ class TaskHandlerRegistryTests(unittest.TestCase):
     def test_invalid_name_handler_and_version_rejected(self):
         self.assertEqual(self.registry.register("../scan", self.handler)["reason"], "handler_name_invalid")
         self.assertEqual(self.registry.register("scan", None)["reason"], "handler_not_callable")
-        self.assertEqual(self.registry.register("scan", self.handler, "bad version")["reason], "handler_version_invalid")
+        self.assertEqual(self.registry.register("scan", self.handler, "bad version")["reason"], "handler_version_invalid")
 
     def test_resolve_unknown_and_version_mismatch(self):
         self.assertEqual(self.registry.resolve("missing")["action"], "not_found")
