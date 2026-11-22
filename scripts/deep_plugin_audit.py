@@ -208,6 +208,7 @@ def run_suite() -> int:
     )
     checks.append(scanner_check)
     scanner_metrics = {"available": False}
+    scanner_parse_started = time.perf_counter()
     combined = scan_dir / "findings-combined.json"
     if combined.is_file():
         try:
@@ -218,15 +219,28 @@ def run_suite() -> int:
                 for item in findings if isinstance(item, dict)
             )
             skipped = payload.get("metadata", {}).get("skipped", {})
+            per_scanner = {}
+            for scanner in ("semgrep", "gitleaks", "trivy"):
+                imported = read_json(scan_dir / f"findings-{scanner}.json")
+                per_scanner[scanner] = len(imported.get("findings", []))
             scanner_metrics = {
                 "available": True,
                 "combined_findings": len(findings),
                 "severity_counts": dict(sorted(severity_counts.items())),
+                "per_scanner_findings": per_scanner,
                 "skipped_records": sum(len(v) if isinstance(v, list) else 1 for v in skipped.values()) if isinstance(skipped, dict) else None,
                 "scanners": ["semgrep", "gitleaks", "trivy"],
             }
         except Exception as exc:
             scanner_metrics = {"available": False, "parse_error": f"{type(exc).__name__}: {exc}"}
+    scanner_parse_duration = round(time.perf_counter() - scanner_parse_started, 6)
+    checks.append({
+        "name": "Validate normalized scanner JSON and calculate exact finding counts",
+        "command": ["python", "JSON parse: findings-combined + 3 per-scanner reports"],
+        "exit_code": 0 if scanner_metrics.get("available") else 1,
+        "success": bool(scanner_metrics.get("available")),
+        "duration_seconds": scanner_parse_duration,
+    })
 
     result = {
         "python": sys.version.split()[0],
@@ -329,6 +343,7 @@ def make_report() -> int:
         if scan.get("available"):
             lines.append(f"- Combined normalized findings: **{scan.get('combined_findings')}**")
             lines.append(f"- Severity counts: `{json.dumps(scan.get('severity_counts', {}), sort_keys=True)}`")
+            lines.append(f"- Per-scanner normalized findings: `{json.dumps(scan.get('per_scanner_findings', {}), sort_keys=True)}`")
             lines.append(f"- Skipped records: **{scan.get('skipped_records')}**")
         else:
             lines.append("- Scanner result metrics unavailable; inspect the workflow logs for the scanner command outcome.")
@@ -354,6 +369,9 @@ def make_report() -> int:
         "plugin_checks_total": len(checks),
         "missing_reports": missing,
         "failed_checks": failed_checks,
+        "scanner_findings": suite.get("security_scan", {}).get("per_scanner_findings") if suite else None,
+        "scanner_severity_counts": suite.get("security_scan", {}).get("severity_counts") if suite else None,
+        "scanner_skipped_records": suite.get("security_scan", {}).get("skipped_records") if suite else None,
     }
     write_json(OUT / "audit-metrics.json", metrics)
     print(report)
