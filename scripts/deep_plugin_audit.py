@@ -132,7 +132,11 @@ def run_suite() -> int:
         "tests/format-after-edit.test.sh",
         "tests/install-agent-skills.test.sh",
     ]
-    checks.append(command_record("Bash syntax validation", ["bash", "-n", *shell_files]))
+    syntax_checks = [
+        command_record("Bash syntax: " + path, ["bash", "-n", path])
+        for path in shell_files
+    ]
+    checks.extend(syntax_checks)
     for name, path in [
         ("Pre-push guard regression suite", "tests/verify-before-push.test.sh"),
         ("Post-edit formatter regression suite", "tests/format-after-edit.test.sh"),
@@ -229,7 +233,7 @@ def run_suite() -> int:
         "checks": checks,
         "metrics": {
             "json_manifests_parsed": len(manifests) if manifest_check["success"] else 0,
-            "shell_files_syntax_checked": len(shell_files) if checks[1]["success"] else 0,
+            "shell_files_syntax_checked": sum(1 for item in syntax_checks if item["success"]),
             "cli_commands_attempted": len(cli_commands),
         },
         "benchmark": benchmark_metrics,
