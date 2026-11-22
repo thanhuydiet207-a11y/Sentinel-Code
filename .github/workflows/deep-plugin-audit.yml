@@ -1,9 +1,6 @@
 name: Deep Plugin Audit
 
 on:
-  push:
-    branches:
-      - "test/**"
   pull_request:
   workflow_dispatch:
 
