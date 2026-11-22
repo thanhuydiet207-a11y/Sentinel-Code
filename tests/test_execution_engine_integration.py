@@ -92,15 +92,15 @@ class ExecutionEngineIntegrationTests(unittest.TestCase):
         self.assertEqual(created["action"], "created")
         durable = created["durable_runtime"]
         runtime.start_stage("one", T1)
-        runtime.complete_stage("one", T2)
+        runtime.finish_stage("one", "completed", T2)
         persisted = durable.persist(T2)
         self.assertEqual(persisted["action"], "persisted")
         restored = DurableWorkflowRuntime.restore(store, "exec-durable")
         self.assertEqual(restored["action"], "restored")
         self.assertEqual(restored["durable_runtime"].runtime.stage_states["one"], "completed")
         stale = durable.persist(T3)
-        self.assertEqual(stale["action"], "blocked")
-        self.assertEqual(stale["reason"], "version_conflict")
+        self.assertEqual(stale["action"], "conflict")
+        self.assertEqual(stale["current_version"], 2)
 
 if __name__ == "__main__":
     unittest.main()
