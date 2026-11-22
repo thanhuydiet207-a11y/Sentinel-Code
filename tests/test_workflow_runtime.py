@@ -24,8 +24,11 @@ class WorkflowExecutionRuntimeTests(unittest.TestCase):
         self.runtime.start_stage("a", self.now)
         self.runtime.finish_stage("a", "failed", "2026-01-01T00:00:01+00:00", "boom")
         plan = self.runtime.plan()
-        self.assertEqual(plan["blocked_stages"][0]["stage"], "b")
-        self.assertEqual(plan["blocked_stages"][1]["stage"], "c")
+        blocked = {item["stage"]: item for item in plan["blocked_stages"]}
+        self.assertIn("a", blocked)
+        self.assertEqual(blocked["a"]["reason"], "stage_failed")
+        self.assertEqual(blocked["b"]["reason"], "dependency_failed")
+        self.assertEqual(blocked["c"]["reason"], "dependency_failed")
 
     def test_timeout_marks_running_stage_failed(self):
         self.runtime.start_stage("a", self.now, timeout_seconds=2)
