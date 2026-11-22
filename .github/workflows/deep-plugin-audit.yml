@@ -1,0 +1,107 @@
+name: Deep Plugin Audit
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deep-audit:
+    name: Full plugin and security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run complete Python unit suite on Python 3.11
+        continue-on-error: true
+        env:
+          SENTINEL_AUDIT_DIR: ${{ runner.temp }}/sentinel-audit
+        run: python scripts/deep_plugin_audit.py unit --label python-3.11
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run complete Python unit suite on Python 3.12
+        continue-on-error: true
+        env:
+          SENTINEL_AUDIT_DIR: ${{ runner.temp }}/sentinel-audit
+        run: python scripts/deep_plugin_audit.py unit --label python-3.12
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install shell and Claude plugin test dependencies
+        continue-on-error: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          npm install --global @anthropic-ai/claude-code@2.1.323
+
+      - name: Install Semgrep
+        continue-on-error: true
+        run: python -m pip install semgrep
+
+      - name: Install Gitleaks
+        continue-on-error: true
+        run: |
+          version="8.24.2"
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+
+      - name: Install Trivy with checksum verification
+        continue-on-error: true
+        run: |
+          version="0.76.2"
+          archive="/tmp/trivy.tar.gz"
+          asset="trivy_${version}_Linux-64bit.tar.gz"
+          base="https://github.com/aquasecurity/trivy/releases/download/v${version}"
+          curl --retry 3 --retry-all-errors -fsSL "$base/$asset" -o "$archive"
+          curl --retry 3 --retry-all-errors -fsSL "$base/trivy_${version}_checksums.txt" -o /tmp/trivy-checksums.txt
+          expected="$(awk -v asset="$asset" '$2 == asset { print $1 }' /tmp/trivy-checksums.txt)"
+          actual="$(sha256sum "$archive" | awk '{ print $1 }')"
+          test -n "$expected"
+          test "$expected" = "$actual"
+          tar -tzf "$archive" trivy >/dev/null
+          tar -xzf "$archive" -C /tmp trivy
+          sudo install /tmp/trivy /usr/local/bin/trivy
+          trivy --version
+
+      - name: Run plugin, shell, CLI, benchmark and scanner checks
+        continue-on-error: true
+        env:
+          SENTINEL_AUDIT_DIR: ${{ runner.temp }}/sentinel-audit
+        run: python scripts/deep_plugin_audit.py suite
+
+      - name: Generate exact test metrics report
+        if: always()
+        env:
+          SENTINEL_AUDIT_DIR: ${{ runner.temp }}/sentinel-audit
+        run: python scripts/deep_plugin_audit.py report
+
+      - name: Upload audit metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-code-deep-audit
+          path: |
+            ${{ runner.temp }}/sentinel-audit/audit-report.md
+            ${{ runner.temp }}/sentinel-audit/audit-metrics.json
+            ${{ runner.temp }}/sentinel-audit/python-3.11.json
+            ${{ runner.temp }}/sentinel-audit/python-3.12.json
+            ${{ runner.temp }}/sentinel-audit/plugin-suite.json
+          if-no-files-found: warn
+          retention-days: 14

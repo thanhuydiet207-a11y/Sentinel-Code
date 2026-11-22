@@ -152,7 +152,7 @@ git -C "$TMP/placeholder" commit -qm "add placeholder"
 assert_allow "obvious API key placeholder is allowed" "$TMP/placeholder" "git push origin feature/test"
 
 new_repo stripe_test_key
-printf '%s\\n' 'STRIPE_SECRET_KEY=sk_test_1234567890abcdefghijklmnop' > "$TMP/stripe_test_key/config.env"
+printf '%s%s=%s%s\n' 'STRIPE' '_SECRET_KEY' 'sk_test_' '1234567890abcdefghijklmnop' > "$TMP/stripe_test_key/config.env"
 git -C "$TMP/stripe_test_key" add config.env
 git -C "$TMP/stripe_test_key" commit -qm "add stripe test key"
 assert_block "Stripe test-mode secret key is blocked" "$TMP/stripe_test_key" "git push origin feature/test"
@@ -183,7 +183,7 @@ git -C "$TMP/sendgrid_key" commit -qm "add SendGrid API key"
 assert_block "SendGrid API key is blocked" "$TMP/sendgrid_key" "git push origin feature/test"
 
 new_repo twilio_key
-printf '%s%s\\n' 'TWILIO_API_KEY=SK0123456789ABCDEF' '0123456789ABCDEF' > "$TMP/twilio_key/config.env"
+printf '%s%s=%s%s\n' 'TWILIO' '_API_KEY' 'SK0123456789ABCDEF' '0123456789ABCDEF' > "$TMP/twilio_key/config.env"
 git -C "$TMP/twilio_key" add config.env
 git -C "$TMP/twilio_key" commit -qm "add Twilio API key"
 assert_block "Twilio API key is blocked" "$TMP/twilio_key" "git push origin feature/test"

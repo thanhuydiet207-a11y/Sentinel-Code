@@ -33,8 +33,8 @@ for scanner in ("semgrep", "gitleaks", "trivy"):
     skipped[scanner] = payload.get("metadata", {}).get("skipped", [])
 payload = {"schema_version": "1.0", "metadata": {"source": "automated-scanner-pipeline", "scanners": ["semgrep", "gitleaks", "trivy"], "skipped": skipped}, "findings": deduplicate_findings(all_findings)}
 errors = validate_payload(payload, root)
-if errors: raise SystemExit("Combined findings failed evidence validation:\\n" + "\\n".join(errors))
-(out / "findings-combined.json").write_text(json.dumps(payload, indent=2) + "\\n")
+if errors: raise SystemExit("Combined findings failed evidence validation:\\n" + "\n".join(errors))
+(out / "findings-combined.json").write_text(json.dumps(payload, indent=2) + "\n")
 (out / "report.md").write_text(render_markdown_report(payload["findings"], "Automated repository scan"))
 print(f"Validated and deduplicated {len(payload['findings'])} finding(s)")
 print(f"Skipped records: {sum(map(len, skipped.values()))}")
