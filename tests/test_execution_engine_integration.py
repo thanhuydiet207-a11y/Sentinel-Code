@@ -80,7 +80,8 @@ class ExecutionEngineIntegrationTests(unittest.TestCase):
         wrong_task = {"task_id": "other-task", "handler": "integration.safe", "input": {}}
         result = self.worker.execute_claimed(claimed["job"], claimed["lease"], wrong_task, T0, T1, 20)
         self.assertEqual(result["action"], "blocked")
-        self.assertEqual(result["execution"]["reason"], "task_job_mismatch")
+        self.assertEqual(result["reason"], "task_job_mismatch")
+        self.assertEqual(result["lease"]["action"], "released")
         self.assertEqual(invoked, [])
         reclaimed = self.worker.claim_due(T2, "worker-y", 20)
         self.assertEqual(reclaimed["action"], "claimed")
@@ -94,7 +95,7 @@ class ExecutionEngineIntegrationTests(unittest.TestCase):
         runtime.start_stage("one", T1)
         runtime.finish_stage("one", "completed", T2)
         persisted = durable.persist(T2)
-        self.assertEqual(persisted["action"], "persisted")
+        self.assertEqual(persisted["action"], "saved")
         restored = DurableWorkflowRuntime.restore(store, "exec-durable")
         self.assertEqual(restored["action"], "restored")
         self.assertEqual(restored["durable_runtime"].runtime.stage_states["one"], "completed")
