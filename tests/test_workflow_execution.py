@@ -25,6 +25,7 @@ class WorkflowExecutionPlannerTests(unittest.TestCase):
         self.assertEqual(result["blocked_stages"][0]["stage"], "a")
         self.assertEqual(result["blocked_stages"][1]["stage"], "b")
         self.assertEqual(result["waiting_stages"], [])
+        self.assertEqual(result["blocked_stages"][2], {"stage": "c", "reason": "dependency_failed", "dependencies": ["b"]})
 
     def test_retry_marker_makes_stage_ready_when_dependencies_met(self):
         result = build_execution_plan(["a", "b"], {"b": ["a"]}, [{"stage": "a", "status": "completed"}, {"stage": "b", "status": "failed"}, {"stage": "b", "status": "retry"}])
