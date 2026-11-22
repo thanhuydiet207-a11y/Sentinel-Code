@@ -117,8 +117,6 @@ class WorkerExecutionCoordinator:
         if not isinstance(task_id, str) or not task_id.strip():
             return {"action": "blocked", "reason": "task_id_invalid"}
         expected_task_id = job.get("task_id")
-        if expected_task_id is not None and expected_task_id != task_id:
-            return {"action": "blocked", "reason": "task_job_mismatch"}
         if context is not None and not isinstance(context, dict):
             return {"action": "blocked", "reason": "context_invalid"}
         start = _parse_time(started_at)
@@ -127,6 +125,12 @@ class WorkerExecutionCoordinator:
             return {"action": "blocked", "reason": "execution_times_invalid"}
         if not isinstance(lease_seconds, int) or isinstance(lease_seconds, bool) or lease_seconds < 1:
             return {"action": "blocked", "reason": "lease_seconds_invalid"}
+        if expected_task_id is not None and expected_task_id != task_id:
+            worker_id, token = fields
+            released = self.lease_store.release(job_id, worker_id, token, finished_at)
+            if released.get("action") == "released":
+                return {"action": "blocked", "reason": "task_job_mismatch", "lease": released}
+            return {"action": "blocked", "reason": "lease_release_rejected", "lease": released}
 
         worker_id, token = fields
         heartbeat = self.lease_store.renew(
