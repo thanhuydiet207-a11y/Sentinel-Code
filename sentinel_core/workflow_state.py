@@ -124,6 +124,9 @@ def load_workflow(store: str | Path, workflow_id: str) -> dict:
 def checkpoint_stage(store: str | Path, workflow_id: str, stage: str, status: str, output: Any = None, error: str | None = None) -> dict:
     workflow_id = _safe_id(workflow_id)
     state = load_workflow(store, workflow_id)
+    integrity = verify_workflow(state)
+    if not integrity["valid"]:
+        raise ValueError("checkpoint integrity invalid: " + ", ".join(integrity["errors"]))
     if state.get("status") != "running":
         raise ValueError("workflow is not running; failed workflows require retry_stage first")
     if stage not in state.get("stages", []):
