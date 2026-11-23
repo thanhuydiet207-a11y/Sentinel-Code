@@ -15,19 +15,38 @@ SEVERITY_MAP = {
 }
 
 
-def _records(scanner: str, data: Any) -> list[dict[str, Any]]:
+def _records(scanner: str, data: Any) -> list[Any]:
     if scanner == "semgrep":
-        return data.get("results", []) if isinstance(data, dict) else []
+        if not isinstance(data, dict):
+            raise ValueError("Semgrep payload must be an object")
+        results = data.get("results", [])
+        if not isinstance(results, list):
+            raise ValueError("Semgrep results must be an array")
+        return results
     if scanner == "gitleaks":
-        return data if isinstance(data, list) else []
+        if not isinstance(data, list):
+            raise ValueError("Gitleaks payload must be an array")
+        return data
     if scanner == "trivy":
+        if not isinstance(data, dict):
+            raise ValueError("Trivy payload must be an object")
+        results = data.get("Results", []) or []
+        if not isinstance(results, list):
+            raise ValueError("Trivy Results must be an array")
         records = []
-        if isinstance(data, dict):
-            for result in data.get("Results", []) or []:
-                for vuln in result.get("Vulnerabilities", []) or []:
-                    records.append({"_kind": "vulnerability", "_target": result.get("Target"), **vuln})
-                for secret in result.get("Secrets", []) or []:
-                    records.append({"_kind": "secret", "_target": result.get("Target"), **secret})
+        for result in results:
+            if not isinstance(result, dict):
+                records.append(result)
+                continue
+            for key, kind in (("Vulnerabilities", "vulnerability"), ("Secrets", "secret")):
+                items = result.get(key, []) or []
+                if not isinstance(items, list):
+                    raise ValueError(f"Trivy {key} must be an array")
+                for item in items:
+                    if isinstance(item, dict):
+                        records.append({"_kind": kind, "_target": result.get("Target"), **item})
+                    else:
+                        records.append(item)
         return records
     raise ValueError(f"unsupported scanner: {scanner}")
 
@@ -73,8 +92,10 @@ def _category(record: dict[str, Any], scanner: str) -> str:
 def _location(record: dict[str, Any], scanner: str) -> tuple[str, int, int]:
     if scanner == "semgrep":
         path = record.get("path")
-        start = record.get("start", {}).get("line", 1)
-        end = record.get("end", {}).get("line", start)
+        start_data = record.get("start")
+        end_data = record.get("end")
+        start = start_data.get("line", 1) if isinstance(start_data, dict) else 1
+        end = end_data.get("line", start) if isinstance(end_data, dict) else start
     elif scanner == "gitleaks":
         path = record.get("File")
         start = record.get("StartLine") or 1
@@ -84,6 +105,14 @@ def _location(record: dict[str, Any], scanner: str) -> tuple[str, int, int]:
         start = record.get("StartLine") or 1
         end = record.get("EndLine") or start
     return str(path or ""), max(1, int(start)), max(1, int(end))
+
+
+def _normalize_references(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
 
 
 def import_scanner_results(scanner: str, data: Any, repository_root: Path | str) -> dict[str, Any]:
@@ -123,7 +152,7 @@ def import_scanner_results(scanner: str, data: Any, repository_root: Path | str)
             },
             "impact": message[:2000],
             "remediation": str(record.get("fix") or record.get("Remediation") or "Review the scanner finding and apply a safe fix.")[:3000],
-            "references": [str(x) for x in (record.get("references") or record.get("References") or []) if isinstance(x, str)][:20],
+            "references": _normalize_references(record.get("references") or record.get("References"))[:20],
             "scanner": scanner,
         })
     return {"schema_version": "1.0", "metadata": {"scanner": scanner, "imported": len(findings), "skipped": skipped}, "findings": findings}
