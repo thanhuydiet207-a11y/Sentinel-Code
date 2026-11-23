@@ -72,6 +72,20 @@ class WorkflowStateTests(unittest.TestCase):
             self.assertFalse(plan["safe_to_resume"])
             self.assertEqual(plan["failed_stages"], ["a"])
 
+    def test_checkpoint_stage_refuses_to_append_to_tampered_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            create_workflow(tmp, "tampered-append", ["a", "b"], _DIGEST)
+            checkpoint_stage(tmp, "tampered-append", "a", "completed", {"safe": True})
+            path = Path(tmp) / "tampered-append.json"
+            state = json.loads(path.read_text(encoding="utf-8"))
+            state["checkpoints"][0]["output"] = {"safe": False}
+            path.write_text(json.dumps(state), encoding="utf-8")
+            before = path.read_bytes()
+            with self.assertRaisesRegex(ValueError, "checkpoint integrity invalid"):
+                checkpoint_stage(tmp, "tampered-append", "b", "completed", {"next": True})
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse(verify_workflow(load_workflow(tmp, "tampered-append"))["valid"])
+
     def test_checkpoint_chain_detects_tampering(self):
         with tempfile.TemporaryDirectory() as tmp:
             create_workflow(tmp, "run-6", ["a", "b"], _DIGEST)
